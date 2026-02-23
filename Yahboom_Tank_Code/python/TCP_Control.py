@@ -242,30 +242,30 @@ def Distance_test():
     while GPIO.input(EchoPin):
         pass
         t2 = time.time()
-    print "distance is %d " % (((t2 - t1)* 340 / 2) * 100)
+    # print("distance is %d " % (((t2 - t1)* 340 / 2) * 100))
     time.sleep(0.01)
     return ((t2 - t1)* 340 / 2) * 100
 	
 #The front servo rotates to the specified angle
 def frontservo_appointed_detection(pos): 
     for i in range(18):   
-    	pwm_FrontServo.ChangeDutyCycle(2.5 + 10 * pos/180)
-    	time.sleep(0.02)							
-    	#pwm_FrontServo.ChangeDutyCycle(0)	
+        pwm_FrontServo.ChangeDutyCycle(2.5 + 10 * pos/180)
+        time.sleep(0.02)
+        #pwm_FrontServo.ChangeDutyCycle(0)
 
 #The servo rotates left or right to the specified angle
 def leftrightservo_appointed_detection(pos): 
     for i in range(1):   
-    	pwm_LeftRightServo.ChangeDutyCycle(2.5 + 10 * pos/180)
-    	time.sleep(0.02)							
-    	#pwm_LeftRightServo.ChangeDutyCycle(0)	
+        pwm_LeftRightServo.ChangeDutyCycle(2.5 + 10 * pos/180)
+        time.sleep(0.02)
+        #pwm_LeftRightServo.ChangeDutyCycle(0)
 
 #The servo rotates up or down to the specified angle
 def updownservo_appointed_detection(pos):  
     for i in range(1):  
-    	pwm_UpDownServo.ChangeDutyCycle(2.5 + 10 * pos/180)
-    	time.sleep(0.02)							
-    	#pwm_UpDownServo.ChangeDutyCycle(0)	
+        pwm_UpDownServo.ChangeDutyCycle(2.5 + 10 * pos/180)
+        time.sleep(0.02)
+        #pwm_UpDownServo.ChangeDutyCycle(0)
 
 #Tracking test
 def tracking_test():
@@ -411,34 +411,34 @@ def tcp_data_parse():
     if (InputString.find("$4WD,PTZ", 0, len(InputString)) != -1):
         i = InputString.find("PTZ",  0, len(InputString)) 
         ii = InputString.find("#",  0, len(InputString))
-  	if ii > i:
+        if ii > i:
             string = InputString[i+3:ii]
-	    m_kp = int(string)
-	    g_frontServoPos = 180 - m_kp;
-	    NewLineReceived = 0
-	    InputString.zfill(len(InputString))
-		  
+            m_kp = int(string)
+            g_frontServoPos = 180 - m_kp;
+            NewLineReceived = 0
+            InputString.zfill(len(InputString))
+
     #Analyze the colorful searchlight command from the host computer and light the corresponding color
     #eg:$4WD,CLR255,CLG0,CLB0# Colorful lights bright red
     if (InputString.find("CLR", 0, len(InputString)) != -1):
         i = InputString.find("CLR", 0,  len(InputString)) 
         ii = InputString.find(",CLG",  0,  len(InputString))
-	if ii > i:
-           string = InputString[i+3:ii]
-	   m_kp = int(string)
-	   red = m_kp
+        if ii > i:
+            string = InputString[i+3:ii]
+            m_kp = int(string)
+            red = m_kp
         i = InputString.find("CLG",  0, len(InputString)) 
         ii = InputString.find(",CLB",  0, len(InputString))
-	if ii > i:
-           string = InputString[i+3:ii]
-	   m_kp = int(string)
-	   green = m_kp
+        if ii > i:
+            string = InputString[i+3:ii]
+            m_kp = int(string)
+            green = m_kp
         i = InputString.find("CLB",  0, len(InputString)) 
         ii = InputString.find("#",  0,  len(InputString))
-	if ii > i:
+        if ii > i:
             string = InputString[i+3:ii]
-	    m_kp = int(string)
-	    blue = m_kp
+            m_kp = int(string)
+            blue = m_kp
         color_led_pwm(red, green, blue)		  
         NewLineReceived = 0
         InputString.zfill(len(InputString))
@@ -514,30 +514,29 @@ def tcp_data_parse():
             else:
                 g_CarState = enSTOP		
 
-        			
-	if InputString[9] == front_left_servo:
-	    g_frontServoPos = 180
-	elif InputString[9] == front_right_servo:
-	    g_frontServoPos = 0
+        if InputString[9] == front_left_servo:
+            g_frontServoPos = 180
+        elif InputString[9] == front_right_servo:
+            g_frontServoPos = 0
         elif InputString[9] == up_servo:
-	    g_ServoState = enSERVOUP
-	elif InputString[9] == down_servo:
-	    g_ServoState = enSERVODOWN
+            g_ServoState = enSERVOUP
+        elif InputString[9] == down_servo:
+            g_ServoState = enSERVODOWN
         elif InputString[9] == left_servo:
-	    g_ServoState = enSERVOLEFT
+            g_ServoState = enSERVOLEFT
         elif InputString[9] == right_servo:
-	    g_ServoState = enSERVORIGHT
+            g_ServoState = enSERVORIGHT
         elif InputString[9] == updowninit_servo:
-	    g_ServoState = enSERVOUPDOWNINIT
-	elif InputString[9] == stop_servo:
-	    g_ServoState = enSERVOSTOP
-	else:
-	    g_ServoState = enSERVOSTOP
-            
+            g_ServoState = enSERVOUPDOWNINIT
+        elif InputString[9] == stop_servo:
+            g_ServoState = enSERVOSTOP
+        else:
+            g_ServoState = enSERVOSTOP
+
         NewLineReceived = 0
         InputString.zfill(len(InputString))
 
-	#According to the analyzed data, let the car make the corresponding movement
+        #According to the analyzed data, let the car make the corresponding movement
         if g_CarState == enSTOP:
             brake()          
         elif g_CarState == enRUN:
@@ -562,7 +561,7 @@ def Data_Pack():
     if recvbuf[0] == '$' and recvbuf.find("#",  0, len(recvbuf)) != -1:
         InputString = recvbuf
         NewLineReceived = 1
-        print "InputString: %s" % InputString
+        print("InputString: %s" % InputString)
 		
 #The collected sensor data serial port is sent back to the PC for display.
 def tcp_data_postback():
@@ -583,7 +582,7 @@ def tcp_data_postback():
     follow_light_test()
     ReturnTemp += LDR_value
     ReturnTemp += "#"
-    print "ReturnTemp: %s" % ReturnTemp
+    print("ReturnTemp: %s" % ReturnTemp)
     return ReturnTemp
 
 def ServorThread():
@@ -593,41 +592,36 @@ def ServorThread():
     if g_ServoState == enSERVOUP:
         servo_up()
     elif g_ServoState == enSERVODOWN:
-	servo_down()
+        servo_down()
     elif g_ServoState == enSERVOLEFT:
-	servo_left()
+        servo_left()
     elif g_ServoState == enSERVORIGHT:
-	servo_right()
+        servo_right()
     elif g_ServoState == enSERVOUPDOWNINIT:
-	servo_updown_init()
+        servo_updown_init()
     elif g_ServoState == enSERVOSTOP:
-    	servo_stop()
-    
-    if g_nowfrontPos != g_frontServoPos:
-    	frontservo_appointed_detection(g_frontServoPos)
-    	g_nowfrontPos = g_frontServoPos
-    	pwm_FrontServo.ChangeDutyCycle(0)	
-            
-    
+        servo_stop()
 
-		  
+    if g_nowfrontPos != g_frontServoPos:
+        frontservo_appointed_detection(g_frontServoPos)
+        g_nowfrontPos = g_frontServoPos
+        pwm_FrontServo.ChangeDutyCycle(0)
+
 try:
     init()
     servo_init()
-    global g_ServoState
-    global timecount
-    global connectflag 
     connectflag = 0
     timecount = 1000
     count = 50
 
     tcpservicesock= socket.socket(socket.AF_INET,socket.SOCK_STREAM)
     tcpservicesock.setblocking(0)
-	# Input your IP address in here
-    tcpservicesock.bind(('192.168.50.1', 8888))  
+    # IP Raspberry Pi: на устройстве выполните hostname -I или ip addr
+    # Можно использовать '0.0.0.0' чтобы слушать на всех интерфейсах
+    tcpservicesock.bind(('192.168.0.19', 8888))  
 
     tcpservicesock.listen(5)
-    print "waiting for connection...."
+    print("waiting for connection....")
 
     clientAddrList = []
     thread1 = threading.Thread(target = ServorThread)
@@ -644,19 +638,17 @@ try:
         except:
             pass 
         else:
-            print "new user :%s " % str(addr)
+            print("new user :%s " % str(addr))
            
             tcpclientsock.setblocking(0)
             clientAddrList.append((tcpclientsock,addr))
         for tcpclientsock,addr in clientAddrList:
             try:
-                global recvbuf
-                global sendbuf
                 recvbuf = ''
                
-                print "Start recv!"
+                print("Start recv!")
                 recvbuf = tcpclientsock.recv(128)
-                print "Start recv over!"
+                print("Start recv over!")
             except:
                 pass
             else:
@@ -679,10 +671,10 @@ try:
                sendbuf = tcp_data_postback()
                if not sendbuf:
                    break
-               if  connectflag:
-	           try:
+               if connectflag:
+                   try:
                        tcpclientsock.send(sendbuf)
-    		   except:
+                   except:
                        pass
                timecount = 1000
                count = 50
