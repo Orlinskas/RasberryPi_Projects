@@ -24,6 +24,44 @@ ACTIONS = {"FORWARD", "BACKWARD", "TURN_LEFT", "TURN_RIGHT", "STOP"}
 PathLike = Union[str, Path]
 
 
+def zero_state_payload() -> Dict[str, Any]:
+    """Возвращает нулевое (стартовое) состояние робота."""
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "state_id": "st_000000",
+        "timestamp": 0.0,
+        "proximity": {
+            "distance_cm": None,
+            "valid": False,
+        },
+        "camera": {
+            "obstacle": False,
+            "target_x": None,
+            "confidence": 0.0,
+            "valid": False,
+        },
+    }
+
+
+def zero_command_payload() -> Dict[str, Any]:
+    """Возвращает нулевую (безопасную) команду STOP."""
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "command_id": "cmd_000000",
+        "timestamp": 0.0,
+        "based_on_state_id": "st_000000",
+        "action": "STOP",
+        "params": {
+            "speed": 0,
+            "duration_ms": 0,
+        },
+        "reason": "initial_state",
+        "safety": {
+            "cancel_if_state_older_ms": 700,
+        },
+    }
+
+
 def now_ts() -> float:
     """Текущее время в формате Unix timestamp."""
     return time.time()

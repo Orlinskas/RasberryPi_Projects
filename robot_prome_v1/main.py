@@ -13,7 +13,7 @@ from typing import Any, Dict
 
 from brain import BrainConfig, run_brain_loop
 from controller import run_controller_loop
-from shared import is_stale, read_json
+from shared import atomic_write_json, is_stale, read_json, zero_command_payload, zero_state_payload
 from vision import VisionConfig, run_vision_loop
 
 LOGGER = logging.getLogger("main")
@@ -112,6 +112,10 @@ def main() -> None:
         stop_event.set()
         for thread in threads:
             thread.join(timeout=3.0)
+        # При завершении системы сбрасываем runtime-файлы в нулевое состояние.
+        atomic_write_json(state_path, zero_state_payload())
+        atomic_write_json(command_path, zero_command_payload())
+        LOGGER.info("state.json и command.json сброшены в нулевое состояние")
         LOGGER.info("Main orchestrator остановлен")
 
 
