@@ -40,11 +40,19 @@ def zero_state_payload() -> Dict[str, Any]:
             "confidence": 0.0,
             "valid": False,
         },
+        "feelings": {
+            "command_id": "cmd_000000",
+            "action": "STOP",
+            "speed": 0,
+            "duration_ms": 0,
+            "reason": "initial_state",
+            "updated_at": 0.0,
+        },
     }
 
 
 def zero_command_payload() -> Dict[str, Any]:
-    """Возвращает нулевую (безопасную) команду STOP."""
+    """Возвращает нулевую команду STOP."""
     return {
         "schema_version": SCHEMA_VERSION,
         "command_id": "cmd_000000",
@@ -56,9 +64,6 @@ def zero_command_payload() -> Dict[str, Any]:
             "duration_ms": 0,
         },
         "reason": "initial_state",
-        "safety": {
-            "cancel_if_state_older_ms": 700,
-        },
     }
 
 
@@ -162,6 +167,7 @@ class RobotState:
     timestamp: float = field(default_factory=now_ts)
     proximity: ProximityState = field(default_factory=ProximityState)
     camera: CameraState = field(default_factory=CameraState)
+    feelings: "FeelingsState" = field(default_factory=lambda: FeelingsState())
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -170,12 +176,14 @@ class RobotState:
             "timestamp": self.timestamp,
             "proximity": self.proximity.to_dict(),
             "camera": self.camera.to_dict(),
+            "feelings": self.feelings.to_dict(),
         }
 
     @classmethod
     def from_dict(cls, payload: Dict[str, Any]) -> "RobotState":
         prox = payload.get("proximity", {})
         cam = payload.get("camera", {})
+        feelings = payload.get("feelings", {})
         timestamp = payload.get("timestamp", now_ts())
         try:
             timestamp = float(timestamp)
@@ -187,6 +195,7 @@ class RobotState:
             timestamp=timestamp,
             proximity=ProximityState.from_dict(prox if isinstance(prox, dict) else {}),
             camera=CameraState.from_dict(cam if isinstance(cam, dict) else {}),
+            feelings=FeelingsState.from_dict(feelings if isinstance(feelings, dict) else {}),
         )
 
 
@@ -194,7 +203,7 @@ class RobotState:
 class CommandParams:
     """Параметры движения для controller."""
 
-    speed: int = 40
+    speed: int = 20
     duration_ms: int = 200
 
     def to_dict(self) -> Dict[str, Any]:
@@ -202,12 +211,12 @@ class CommandParams:
 
     @classmethod
     def from_dict(cls, payload: Dict[str, Any]) -> "CommandParams":
-        speed = payload.get("speed", 40)
+        speed = payload.get("speed", 20)
         duration_ms = payload.get("duration_ms", 200)
         try:
             speed = int(speed)
         except (TypeError, ValueError):
-            speed = 40
+            speed = 20
         try:
             duration_ms = int(duration_ms)
         except (TypeError, ValueError):
@@ -216,22 +225,54 @@ class CommandParams:
 
 
 @dataclass
-class CommandSafety:
-    """Параметры безопасности для автоматической остановки."""
+class FeelingsState:
+    """Текущее исполняемое действие, привязанное к последней команде."""
 
-    cancel_if_state_older_ms: int = 700
+    command_id: str = "cmd_000000"
+    action: str = "STOP"
+    speed: int = 0
+    duration_ms: int = 0
+    reason: str = "initial_state"
+    updated_at: float = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"cancel_if_state_older_ms": int(self.cancel_if_state_older_ms)}
+        return {
+            "command_id": self.command_id,
+            "action": self.action,
+            "speed": int(self.speed),
+            "duration_ms": int(self.duration_ms),
+            "reason": self.reason,
+            "updated_at": float(self.updated_at),
+        }
 
     @classmethod
-    def from_dict(cls, payload: Dict[str, Any]) -> "CommandSafety":
-        timeout = payload.get("cancel_if_state_older_ms", 700)
+    def from_dict(cls, payload: Dict[str, Any]) -> "FeelingsState":
+        speed = payload.get("speed", 0)
+        duration_ms = payload.get("duration_ms", 0)
+        updated_at = payload.get("updated_at", 0.0)
         try:
-            timeout = int(timeout)
+            speed = int(speed)
         except (TypeError, ValueError):
-            timeout = 700
-        return cls(cancel_if_state_older_ms=max(100, timeout))
+            speed = 0
+        try:
+            duration_ms = int(duration_ms)
+        except (TypeError, ValueError):
+            duration_ms = 0
+        try:
+            updated_at = float(updated_at)
+        except (TypeError, ValueError):
+            updated_at = 0.0
+        action = str(payload.get("action", "STOP")).upper()
+        if action not in ACTIONS:
+            action = "STOP"
+        return cls(
+            command_id=str(payload.get("command_id", "cmd_000000")),
+            action=action,
+            speed=max(0, min(100, speed)),
+            duration_ms=max(0, duration_ms),
+            reason=str(payload.get("reason", "unspecified")),
+            updated_at=max(0.0, updated_at),
+        )
 
 
 @dataclass
@@ -245,7 +286,6 @@ class RobotCommand:
     action: str = "STOP"
     params: CommandParams = field(default_factory=CommandParams)
     reason: str = "default_stop"
-    safety: CommandSafety = field(default_factory=CommandSafety)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -256,13 +296,11 @@ class RobotCommand:
             "action": self.action,
             "params": self.params.to_dict(),
             "reason": self.reason,
-            "safety": self.safety.to_dict(),
         }
 
     @classmethod
     def from_dict(cls, payload: Dict[str, Any]) -> "RobotCommand":
         params = payload.get("params", {})
-        safety = payload.get("safety", {})
         timestamp = payload.get("timestamp", now_ts())
         try:
             timestamp = float(timestamp)
@@ -279,5 +317,4 @@ class RobotCommand:
             action=action,
             params=CommandParams.from_dict(params if isinstance(params, dict) else {}),
             reason=str(payload.get("reason", "unspecified")),
-            safety=CommandSafety.from_dict(safety if isinstance(safety, dict) else {}),
         )

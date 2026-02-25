@@ -58,7 +58,7 @@ except ImportError:  # pragma: no cover
 
     GPIO = _MockGPIO()
 
-from shared import RobotCommand, is_stale, read_json
+from shared import RobotCommand, read_json
 
 # GPIO-пины моторов (BCM)
 IN1, IN2, IN3, IN4 = 20, 21, 19, 26
@@ -163,13 +163,8 @@ def _clamp_speed(value, fallback):
 
 
 def execute_command(command: RobotCommand) -> None:
-    """Маппинг action -> функция движения + защита от устаревших команд."""
+    """Маппинг action -> функция движения."""
     global SPEED, TURN_SPEED, _ACTION_UNTIL_TS
-
-    if is_stale(command.timestamp, command.safety.cancel_if_state_older_ms):
-        stop()
-        LOGGER.warning("Команда устарела, выполнен STOP.")
-        return
 
     action = command.action
     speed = _clamp_speed(command.params.speed, SPEED)
@@ -225,8 +220,6 @@ def run_controller_loop(
             if command.command_id != last_command_id:
                 execute_command(command)
                 last_command_id = command.command_id
-            elif is_stale(command.timestamp, command.safety.cancel_if_state_older_ms):
-                stop()
             elif _ACTION_UNTIL_TS > 0 and time.time() >= _ACTION_UNTIL_TS:
                 stop()
             stop_event.wait(poll_interval_s)

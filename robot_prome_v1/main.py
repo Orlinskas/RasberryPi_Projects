@@ -9,35 +9,23 @@ import logging
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict
 
 from brain import BrainConfig, run_brain_loop
 from controller import run_controller_loop
-from shared import atomic_write_json, is_stale, read_json, zero_command_payload, zero_state_payload
+from feelings import FeelingsConfig, run_feelings_loop
+from shared import atomic_write_json, read_json, zero_command_payload, zero_state_payload
 from vision import VisionConfig, run_vision_loop
 
 LOGGER = logging.getLogger("main")
 
 
-def _read_timestamp(payload: Dict[str, Any]) -> float:
-    """Извлекает timestamp из JSON-подобного объекта."""
-    if not isinstance(payload, dict):
-        return 0.0
-    value = payload.get("timestamp", 0.0)
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return 0.0
-
-
 def monitor_health(
-    state_path: Path,
-    command_path: Path,
+    state_path,
+    command_path,
     stop_event: threading.Event,
     check_interval_s: float = 0.5,
-    stale_limit_ms: int = 2000,
 ) -> None:
-    """Пассивный монитор: проверяет свежесть state/command."""
+    """Пассивный монитор: проверяет наличие и корректность state/command."""
     LOGGER.info("Health monitor запущен")
     while not stop_event.is_set():
         state = read_json(state_path)
@@ -45,11 +33,8 @@ def monitor_health(
 
         if not isinstance(state, dict):
             LOGGER.warning("state.json отсутствует или поврежден")
-        elif is_stale(_read_timestamp(state), stale_limit_ms):
-            LOGGER.warning("state.json устарел")
-
-        if isinstance(command, dict) and is_stale(_read_timestamp(command), stale_limit_ms):
-            LOGGER.warning("command.json устарел")
+        if not isinstance(command, dict):
+            LOGGER.warning("command.json отсутствует или поврежден")
 
         stop_event.wait(check_interval_s)
     LOGGER.info("Health monitor остановлен")
@@ -57,12 +42,8 @@ def monitor_health(
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Robot main orchestrator")
-    parser.add_argument("--state-path", default=str(Path(__file__).with_name("state.json")))
-    parser.add_argument("--command-path", default=str(Path(__file__).with_name("command.json")))
-    parser.add_argument("--vision-interval", type=float, default=0.12)
-    parser.add_argument("--brain-interval", type=float, default=0.2)
+    parser.add_argument("--vision-interval", type=float, default=VisionConfig.interval_s)
     parser.add_argument("--controller-poll", type=float, default=0.05)
-    parser.add_argument("--real", action="store_true", help="Запуск с реальными сенсорами в vision")
     return parser.parse_args()
 
 
@@ -70,12 +51,13 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
     args = parse_args()
 
-    state_path = Path(args.state_path)
-    command_path = Path(args.command_path)
+    state_path = Path(__file__).with_name("state.json")
+    command_path = Path(__file__).with_name("command.json")
 
     stop_event = threading.Event()
-    vision_config = VisionConfig(state_path=state_path, interval_s=max(0.03, args.vision_interval), use_mock=not bool(args.real))
-    brain_config = BrainConfig(state_path=state_path, command_path=command_path, interval_s=max(0.05, args.brain_interval))
+    vision_config = VisionConfig(interval_s=max(0.1, args.vision_interval))
+    brain_config = BrainConfig(state_path=state_path, command_path=command_path)
+    feelings_config = FeelingsConfig(state_path=state_path, command_path=command_path)
 
     threads = [
         threading.Thread(target=run_vision_loop, args=(vision_config, stop_event), name="vision", daemon=True),
@@ -84,6 +66,12 @@ def main() -> None:
             target=run_controller_loop,
             args=(command_path, max(0.02, args.controller_poll), stop_event),
             name="controller",
+            daemon=True,
+        ),
+        threading.Thread(
+            target=run_feelings_loop,
+            args=(feelings_config, stop_event),
+            name="feelings",
             daemon=True,
         ),
         threading.Thread(

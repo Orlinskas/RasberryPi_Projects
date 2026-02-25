@@ -15,9 +15,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Protocol, Tuple
 
-from shared import CameraState, ProximityState, RobotState, atomic_write_json, now_ts
+from shared import CameraState, FeelingsState, ProximityState, RobotState, atomic_write_json, now_ts, read_json
 
 LOGGER = logging.getLogger("vision")
+STATE_PATH = Path(__file__).with_name("state.json")
 
 
 class ProximitySensor(Protocol):
@@ -53,19 +54,14 @@ class MockCameraDetector:
 
 @dataclass
 class VisionConfig:
-    """Конфигурация цикла vision."""
+    """Конфигурация цикла vision (только частота генерации state)."""
 
-    state_path: Path = Path(__file__).with_name("state.json")
-    interval_s: float = 0.12
-    use_mock: bool = True
+    interval_s: float = 3.0
 
 
 def build_sensors(config: VisionConfig) -> Tuple[ProximitySensor, CameraDetector]:
-    if config.use_mock:
-        return MockProximitySensor(), MockCameraDetector()
-
-    # В этом месте должны подключаться реальные адаптеры сенсоров.
-    raise NotImplementedError("Реальные адаптеры сенсоров еще не подключены. Запустите без --real.")
+    _ = config
+    return MockProximitySensor(), MockCameraDetector()
 
 
 def _build_state(state_counter: int, proximity: ProximitySensor, camera: CameraDetector) -> RobotState:
@@ -100,12 +96,17 @@ def run_vision_loop(config: VisionConfig, stop_event: Optional[threading.Event] 
     stop_event = stop_event or threading.Event()
     proximity, camera = build_sensors(config)
     counter = 0
-    LOGGER.info("Vision запущен. state_path=%s mock=%s", config.state_path, config.use_mock)
+    LOGGER.info("Vision запущен. state_path=%s interval=%.2fs", STATE_PATH, config.interval_s)
 
     while not stop_event.is_set():
         counter += 1
         state = _build_state(counter, proximity, camera)
-        atomic_write_json(config.state_path, state.to_dict())
+        current_state = read_json(STATE_PATH)
+        if isinstance(current_state, dict):
+            feelings_payload = current_state.get("feelings", {})
+            if isinstance(feelings_payload, dict):
+                state.feelings = FeelingsState.from_dict(feelings_payload)
+        atomic_write_json(STATE_PATH, state.to_dict())
         LOGGER.debug("Опубликован state_id=%s", state.state_id)
         stop_event.wait(config.interval_s)
 
@@ -114,15 +115,9 @@ def run_vision_loop(config: VisionConfig, stop_event: Optional[threading.Event] 
 
 def parse_args() -> VisionConfig:
     parser = argparse.ArgumentParser(description="Vision module")
-    parser.add_argument("--state-path", default=str(Path(__file__).with_name("state.json")))
-    parser.add_argument("--interval", type=float, default=0.12)
-    parser.add_argument("--real", action="store_true", help="Запуск с реальными сенсорами")
+    parser.add_argument("--interval", type=float, default=3.0)
     args = parser.parse_args()
-    return VisionConfig(
-        state_path=Path(args.state_path),
-        interval_s=max(0.03, float(args.interval)),
-        use_mock=not bool(args.real),
-    )
+    return VisionConfig(interval_s=max(0.1, float(args.interval)))
 
 
 def main() -> None:

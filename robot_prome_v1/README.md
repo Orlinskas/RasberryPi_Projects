@@ -1,27 +1,61 @@
 # robot_prome_v1
 
-Модульная архитектура управления роботом на Python:
+Легкая модульная архитектура управления роботом через JSON-файлы.
 
-- `vision` — собирает данные сенсоров и публикует `state.json`
-- `brain` — читает `state.json`, принимает решение, публикует `command.json`
-- `controller` — читает `command.json` и управляет моторами
-- `main` — запускает все модули и следит за их состоянием
+## Что делает каждый модуль
 
-## Структура
+- `vision.py` — генерирует новое состояние робота и пишет `state.json`
+- `brain.py` — читает `state.json`, принимает решение, пишет `command.json`
+- `controller.py` — исполняет команду из `command.json` на моторах
+- `feelings.py` — переносит текущую исполняемую команду в `state.feelings`
+- `main.py` — поднимает все потоки и корректно завершает систему
+- `shared.py` — общие модели (`RobotState`, `RobotCommand`, `FeelingsState`) и безопасный JSON I/O
 
-- `main.py` — orchestrator (потоки `vision`, `brain`, `controller`, health-monitor)
-- `vision.py` — цикл чтения сенсоров (по умолчанию mock-режим)
-- `brain.py` — логика решений (`observe -> interpret -> decide`)
-- `controller.py` — исполнение команд и fail-safe остановка
-- `shared.py` — общие модели, JSON I/O, проверка "устаревших" данных
-- `state.json` — текущее состояние робота
-- `command.json` — текущая команда роботу
+## Схема взаимодействия
 
-## Протокол данных
+```mermaid
+flowchart LR
+    sensors["SensorsCamera"] --> vision["vision.py"]
+    vision -->|"write"| state["state.json"]
+    state -->|"read new state_id"| brain["brain.py"]
+    brain -->|"write"| command["command.json"]
+    command -->|"read/execute"| controller["controller.py"]
+    command -->|"read"| feelings["feelings.py"]
+    feelings -->|"update feelings block"| state
+    main["main.py"] --> vision
+    main --> brain
+    main --> controller
+    main --> feelings
+```
 
-### state.json (vision -> brain)
+### Блок-схема основных модулей
 
-Ключевые поля:
+```mermaid
+flowchart TD
+    mainModule["main.py"]
+    visionModule["vision.py"]
+    brainModule["brain.py"]
+    controllerModule["controller.py"]
+    feelingsModule["feelings.py"]
+    stateFile["state.json"]
+    commandFile["command.json"]
+
+    mainModule --> visionModule
+    mainModule --> brainModule
+    mainModule --> controllerModule
+    mainModule --> feelingsModule
+
+    visionModule -->|"пишет"| stateFile
+    brainModule -->|"читает"| stateFile
+    brainModule -->|"пишет"| commandFile
+    controllerModule -->|"читает и исполняет"| commandFile
+    feelingsModule -->|"читает"| commandFile
+    feelingsModule -->|"обновляет feelings"| stateFile
+```
+
+## Формат `state.json`
+
+`state.json` содержит входы сенсоров + блок `feelings`:
 
 - `schema_version`
 - `state_id`
@@ -32,10 +66,14 @@
 - `camera.target_x`
 - `camera.confidence`
 - `camera.valid`
+- `feelings.command_id`
+- `feelings.action`
+- `feelings.speed`
+- `feelings.duration_ms`
+- `feelings.reason`
+- `feelings.updated_at`
 
-### command.json (brain -> controller)
-
-Ключевые поля:
+## Формат `command.json`
 
 - `schema_version`
 - `command_id`
@@ -45,74 +83,74 @@
 - `params.speed`
 - `params.duration_ms`
 - `reason`
-- `safety.cancel_if_state_older_ms`
+
+## Поведение системы
+
+- `vision` работает с интервалом (`--interval`) и создает новый `state_id`
+- `brain` не имеет собственного интервала генерации команд:
+  - обрабатывает только новый `state_id`
+  - если `state_id` не изменился, просто ждет
+- `controller` исполняет действие и держит его `params.duration_ms`
+- `feelings` фиксирует последнюю выполненную команду в `state.feelings`
+- при завершении `main` сбрасывает `state.json` и `command.json` в нулевое состояние
+
+## Логи
+
+- `brain` выводит `STATE used` и `COMMAND generated` в консоль в pretty-print JSON
+- остальные модули логируют жизненный цикл и технические события
 
 ## Быстрый старт
-
-Запуск всего контура:
 
 ```bash
 cd robot_prome_v1
 python3 main.py
 ```
 
-По умолчанию `vision` работает в mock-режиме, поэтому запуск возможен без железа.
+По умолчанию `vision` использует mock-датчики.
 
-## Запуск модулей отдельно
+## Запуск по отдельности
 
 ### Vision
 
 ```bash
-cd robot_prome_v1
-python3 vision.py
+python3 vision.py --interval 3
 ```
 
 ### Brain
 
 ```bash
-cd robot_prome_v1
 python3 brain.py
 ```
 
-### Controller (автомат по command.json)
+### Controller (автоматический режим)
 
 ```bash
-cd robot_prome_v1
-python3 controller.py --mode loop
+python3 controller.py --mode loop --poll 0.05
 ```
 
-### Controller (ручной режим, клавиши W/S/A/D/C/Q)
+### Feelings
 
 ```bash
-cd robot_prome_v1
+python3 feelings.py --poll 0.05
+```
+
+### Controller (ручной режим)
+
+```bash
 python3 controller.py --mode interactive
 ```
 
-## Параметры запуска
+## Параметры `main.py`
 
-### main.py
-
-- `--state-path` путь до `state.json`
-- `--command-path` путь до `command.json`
-- `--vision-interval` период `vision` (сек)
-- `--brain-interval` период `brain` (сек)
-- `--controller-poll` период чтения команд в `controller` (сек)
-- `--real` включить реальный режим сенсоров в `vision` (адаптеры еще не подключены)
+- `--vision-interval` — интервал генерации `state` (сек)
+- `--controller-poll` — частота чтения команд controller (сек)
 
 Пример:
 
 ```bash
-python3 main.py --vision-interval 0.1 --brain-interval 0.2 --controller-poll 0.05
+python3 main.py --vision-interval 3 --controller-poll 0.05
 ```
 
-## Безопасность
+## Текущее ограничение
 
-- `brain` переводит робота в `STOP`, если `state` отсутствует или устарел.
-- `controller` переводит робота в `STOP`, если команда устарела.
-- `main` завершает систему при критическом падении потока.
-
-## Дальнейшие шаги
-
-1. Подключить реальные адаптеры сенсоров в `vision.py`.
-2. Добавить журналирование в файл (rotating logs).
-3. Добавить unit-тесты для `BrainEngine` и `shared` моделей.
+`vision` и `feelings` оба пишут в `state.json`, поэтому для реального прод-режима лучше перейти на единый writer или очередь событий.
