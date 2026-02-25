@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import threading
 from dataclasses import dataclass
@@ -23,6 +24,11 @@ from shared import (
 )
 
 LOGGER = logging.getLogger("brain")
+
+
+def _json_line(payload) -> str:
+    """Возвращает компактный JSON для вывода в консоль."""
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
 @dataclass
@@ -133,10 +139,12 @@ def run_brain_loop(config: BrainConfig, stop_event: Optional[threading.Event] = 
 
     while not stop_event.is_set():
         raw_state = read_json(config.state_path)
+        LOGGER.info("STATE used: %s", _json_line(raw_state if isinstance(raw_state, dict) else {}))
         state = RobotState.from_dict(raw_state) if isinstance(raw_state, dict) else None
         command = engine.decide(state)
-        atomic_write_json(config.command_path, command.to_dict())
-        LOGGER.debug("Опубликован command_id=%s action=%s reason=%s", command.command_id, command.action, command.reason)
+        command_payload = command.to_dict()
+        atomic_write_json(config.command_path, command_payload)
+        LOGGER.info("COMMAND generated: %s", _json_line(command_payload))
         stop_event.wait(config.interval_s)
 
     LOGGER.info("Brain остановлен")
