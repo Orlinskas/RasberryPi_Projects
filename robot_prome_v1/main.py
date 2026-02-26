@@ -12,7 +12,7 @@ from pathlib import Path
 
 from brain import BrainConfig, run_brain_loop
 from controller import run_controller_loop
-from feelings import FeelingsConfig, run_feelings_loop
+from feelings import run_feelings_loop
 from shared import atomic_write_json, read_json, zero_command_payload, zero_state_payload
 from vision import VisionConfig, run_vision_loop
 
@@ -42,35 +42,41 @@ def monitor_health(
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Robot main orchestrator")
-    parser.add_argument("--vision-interval", type=float, default=VisionConfig.interval_s)
-    parser.add_argument("--controller-poll", type=float, default=0.05)
+    parser.add_argument(
+        "--mode",
+        choices=["run", "dry"],
+        default="run",
+        help="run: обычный режим, dry: без управления моторами",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
     args = parse_args()
+    if args.mode == "dry":
+        LOGGER.info("Включен тестовый режим: движение робота отключено (DRY controller)")
 
-    state_path = Path(__file__).with_name("state.json")
-    command_path = Path(__file__).with_name("command.json")
+    protocol_dir = Path(__file__).with_name("protocol")
+    state_path = protocol_dir / "state.json"
+    command_path = protocol_dir / "command.json"
 
     stop_event = threading.Event()
-    vision_config = VisionConfig(interval_s=max(0.1, args.vision_interval))
+    vision_config = VisionConfig()
     brain_config = BrainConfig(state_path=state_path, command_path=command_path)
-    feelings_config = FeelingsConfig(state_path=state_path, command_path=command_path)
 
     threads = [
         threading.Thread(target=run_vision_loop, args=(vision_config, stop_event), name="vision", daemon=True),
         threading.Thread(target=run_brain_loop, args=(brain_config, stop_event), name="brain", daemon=True),
         threading.Thread(
             target=run_controller_loop,
-            args=(command_path, max(0.02, args.controller_poll), stop_event),
+            args=(command_path, 0.05, stop_event, args.mode == "run"),
             name="controller",
             daemon=True,
         ),
         threading.Thread(
             target=run_feelings_loop,
-            args=(feelings_config, stop_event),
+            args=(stop_event,),
             name="feelings",
             daemon=True,
         ),

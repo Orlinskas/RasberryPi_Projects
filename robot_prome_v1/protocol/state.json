@@ -1,8 +1,7 @@
 {
-  "schema_version": "1.0",
   "state_id": "st_000000",
   "timestamp": 0.0,
-  "proximity": {
+  "sensor": {
     "distance_cm": null,
     "valid": false
   },
@@ -10,14 +9,12 @@
     "obstacle": false,
     "target_x": null,
     "confidence": 0.0,
+    "image_path": null,
     "valid": false
   },
-  "feelings": {
-    "command_id": "cmd_000000",
-    "action": "STOP",
-    "speed": 0,
-    "duration_ms": 0,
+  "last_command": {
+    "last_action": "STOP",
     "reason": "initial_state",
-    "updated_at": 0.0
+    "remaining_ms": 0
   }
 }

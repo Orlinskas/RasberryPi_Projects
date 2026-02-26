@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Модуль controller: исполняет команды из `command.json` на моторах."""
+"""Модуль controller: исполняет команды из `protocol/command.json` на моторах."""
 
 import argparse
 import logging
@@ -65,8 +65,8 @@ IN1, IN2, IN3, IN4 = 20, 21, 19, 26
 ENA, ENB = 16, 13
 
 # Базовые скорости ШИМ
-SPEED = 40
-TURN_SPEED = 60
+SPEED = 30
+TURN_SPEED = 30
 
 pwm_ena = None
 pwm_enb = None
@@ -199,34 +199,59 @@ def execute_command(command: RobotCommand) -> None:
     )
 
 
+def execute_command_dry_run(command: RobotCommand) -> None:
+    """Обрабатывает команду без движения моторов (для тестового режима)."""
+    global _ACTION_UNTIL_TS
+
+    duration_ms = max(0, int(command.params.duration_ms))
+    _ACTION_UNTIL_TS = time.time() + (duration_ms / 1000.0) if duration_ms > 0 else 0.0
+
+    LOGGER.debug(
+        "DRY команда id=%s action=%s reason=%s speed=%s",
+        command.command_id,
+        command.action,
+        command.reason,
+        command.params.speed,
+    )
+
 def run_controller_loop(
-    command_path: Union[Path, str] = Path(__file__).with_name("command.json"),
+    command_path: Union[Path, str] = Path(__file__).with_name("protocol") / "command.json",
     poll_interval_s: float = 0.05,
     stop_event: Optional[threading.Event] = None,
+    enable_motors: bool = True,
 ) -> None:
     """Режим автомата: читает команду из файла и исполняет ее."""
     stop_event = stop_event or threading.Event()
     last_command_id = ""
-    setup()
-    LOGGER.info("Controller запущен. command_path=%s", command_path)
+    if enable_motors:
+        setup()
+        LOGGER.info("Controller запущен. command_path=%s", command_path)
+    else:
+        LOGGER.info("Controller запущен в DRY режиме. command_path=%s", command_path)
 
     try:
         while not stop_event.is_set():
             raw = read_json(command_path)
             if not isinstance(raw, dict):
-                stop()
+                if enable_motors:
+                    stop()
                 stop_event.wait(poll_interval_s)
                 continue
 
             command = RobotCommand.from_dict(raw)
             if command.command_id != last_command_id:
-                execute_command(command)
+                if enable_motors:
+                    execute_command(command)
+                else:
+                    execute_command_dry_run(command)
                 last_command_id = command.command_id
-            elif _ACTION_UNTIL_TS > 0 and time.time() >= _ACTION_UNTIL_TS:
-                stop()
+            elif 0 < _ACTION_UNTIL_TS <= time.time():
+                if enable_motors:
+                    stop()
             stop_event.wait(poll_interval_s)
     finally:
-        cleanup()
+        if enable_motors:
+            cleanup()
         LOGGER.info("Controller остановлен")
 
 
@@ -269,8 +294,6 @@ def interactive_main():
 def parse_args():
     parser = argparse.ArgumentParser(description="Robot controller module")
     parser.add_argument("--mode", choices=["interactive", "loop"], default="interactive")
-    parser.add_argument("--command-path", default=str(Path(__file__).with_name("command.json")))
-    parser.add_argument("--poll", type=float, default=0.05)
     return parser.parse_args()
 
 
@@ -281,7 +304,7 @@ def main():
         interactive_main()
     else:
         try:
-            run_controller_loop(command_path=args.command_path, poll_interval_s=max(0.02, float(args.poll)))
+            run_controller_loop()
         except KeyboardInterrupt:
             pass
 

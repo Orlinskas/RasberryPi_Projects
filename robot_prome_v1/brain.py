@@ -22,7 +22,7 @@ from shared import (
 )
 
 LOGGER = logging.getLogger("brain")
-POLL_WAIT_S = 0.05
+POLL_WAIT_S = 0.1
 
 
 def _json_line(payload) -> str:
@@ -34,8 +34,9 @@ def _json_line(payload) -> str:
 class BrainConfig:
     """Настройки путей и порогов логики brain."""
 
-    state_path: Path = Path(__file__).with_name("state.json")
-    command_path: Path = Path(__file__).with_name("command.json")
+    state_path: Path = Path(__file__).with_name("protocol") / "state.json"
+    command_path: Path = Path(__file__).with_name("protocol") / "command.json"
+
     obstacle_distance_cm: float = 30.0
     camera_confidence_threshold: float = 0.7
     target_deadband: float = 0.25
@@ -73,9 +74,9 @@ class BrainEngine:
             return self._new_command("STOP", "unknown", "state_missing", speed=0, duration_ms=0)
 
         proximity_danger = (
-            state.proximity.valid
-            and state.proximity.distance_cm is not None
-            and state.proximity.distance_cm < self.config.obstacle_distance_cm
+            state.sensor.valid
+            and state.sensor.distance_cm is not None
+            and state.sensor.distance_cm < self.config.obstacle_distance_cm
         )
         camera_danger = (
             state.camera.valid
@@ -96,7 +97,7 @@ class BrainEngine:
                 candidate = self._new_command("TURN_LEFT", state.state_id, "target_alignment_left", speed=25, duration_ms=180)
             else:
                 candidate = self._new_command("FORWARD", state.state_id, "target_centered_path_clear", speed=35, duration_ms=220)
-        elif not state.proximity.valid and not state.camera.valid:
+        elif not state.sensor.valid and not state.camera.valid:
             candidate = self._new_command("STOP", state.state_id, "all_sensors_invalid", speed=0, duration_ms=0)
         else:
             candidate = self._new_command("FORWARD", state.state_id, "path_clear_default", speed=30, duration_ms=220)
@@ -138,13 +139,8 @@ def run_brain_loop(config: BrainConfig, stop_event: Optional[threading.Event] = 
 
 def parse_args() -> BrainConfig:
     parser = argparse.ArgumentParser(description="Brain module")
-    parser.add_argument("--state-path", default=str(Path(__file__).with_name("state.json")))
-    parser.add_argument("--command-path", default=str(Path(__file__).with_name("command.json")))
-    args = parser.parse_args()
-    return BrainConfig(
-        state_path=Path(args.state_path),
-        command_path=Path(args.command_path),
-    )
+    _ = parser.parse_args()
+    return BrainConfig()
 
 
 def main() -> None:
