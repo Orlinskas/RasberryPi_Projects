@@ -8,11 +8,15 @@ import argparse
 import json
 import logging
 import threading
+import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional, Tuple
 
 from shared import (
+    ACTIONS,
     CommandParams,
     RobotCommand,
     RobotState,
@@ -36,10 +40,12 @@ class BrainConfig:
 
     state_path: Path = Path(__file__).with_name("protocol") / "state.json"
     command_path: Path = Path(__file__).with_name("protocol") / "command.json"
-
-    obstacle_distance_cm: float = 30.0
-    camera_confidence_threshold: float = 0.7
-    target_deadband: float = 0.25
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "qwen2.5:3b"
+    ollama_timeout_s: float = 30
+    llm_temperature: float = 0.1
+    llm_num_predict: int = 96
+    llm_keep_alive: str = "30m"
 
 
 class BrainEngine:
@@ -68,41 +74,126 @@ class BrainEngine:
             reason=reason,
         )
 
+    @staticmethod
+    def _build_llm_prompt(state: RobotState) -> str:
+        """Формирует минимальный контекст состояния для LLM."""
+        payload = {
+            "state_id": state.state_id,
+            "timestamp": state.timestamp,
+            "sensor": state.sensor.to_dict(),
+            "camera": state.camera.to_dict(),
+            "last_command": state.last_command.to_dict(),
+        }
+        return json.dumps(payload, ensure_ascii=True, sort_keys=True)
+
+    @staticmethod
+    def _system_prompt() -> str:
+        """Системная инструкция для модели с жестким JSON-контрактом."""
+        return (
+            "You are a decision engine for a mobile robot. "
+            "You receive robot state JSON and must output ONLY a JSON object with keys: "
+            "action, speed, duration_ms, reason. "
+            "Allowed action values: FORWARD, BACKWARD, TURN_LEFT, TURN_RIGHT, STOP. "
+            "speed must be integer 0..100. duration_ms must be integer >= 0. "
+            "Do not add markdown, comments, or extra keys."
+        )
+
+    def _request_ollama(self, state: RobotState) -> Optional[Dict[str, Any]]:
+        """Делает локальный запрос к Ollama и возвращает JSON-ответ модели."""
+        started_at = time.perf_counter()
+
+        def elapsed_s() -> float:
+            return time.perf_counter() - started_at
+
+        url = self.config.ollama_base_url.rstrip("/") + "/api/chat"
+        request_payload = {
+            "model": self.config.ollama_model,
+            "stream": False,
+            "format": "json",
+            "keep_alive": self.config.llm_keep_alive,
+            "options": {
+                "temperature": self.config.llm_temperature,
+                "num_predict": self.config.llm_num_predict,
+            },
+            "messages": [
+                {"role": "system", "content": self._system_prompt()},
+                {"role": "user", "content": self._build_llm_prompt(state)},
+            ],
+        }
+        body = json.dumps(request_payload).encode("utf-8")
+        req = urllib.request.Request(url=url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=self.config.ollama_timeout_s) as response:
+                raw = response.read().decode("utf-8", errors="replace")
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            LOGGER.warning("Ollama request failed in %.3f s: %s", elapsed_s(), exc)
+            return None
+
+        try:
+            decoded = json.loads(raw)
+        except json.JSONDecodeError:
+            LOGGER.warning("Ollama returned non-JSON payload in %.3f s", elapsed_s())
+            return None
+
+        if not isinstance(decoded, dict):
+            LOGGER.warning("Ollama payload is not an object (%.3f s)", elapsed_s())
+            return None
+
+        message = decoded.get("message", {})
+        if not isinstance(message, dict):
+            LOGGER.warning("Ollama message field is invalid (%.3f s)", elapsed_s())
+            return None
+        content = message.get("content")
+        if not isinstance(content, str):
+            LOGGER.warning("Ollama content is missing (%.3f s)", elapsed_s())
+            return None
+
+        try:
+            decision = json.loads(content)
+        except json.JSONDecodeError:
+            LOGGER.warning("LLM content is not a valid JSON decision (%.3f s)", elapsed_s())
+            return None
+
+        if not isinstance(decision, dict):
+            LOGGER.warning("LLM decision is not an object (%.3f s)", elapsed_s())
+            return None
+        LOGGER.info("Ollama response time: %.3f s (model=%s)", elapsed_s(), self.config.ollama_model)
+        return decision
+
+    @staticmethod
+    def _normalize_llm_decision(payload: Dict[str, Any]) -> Optional[Tuple[str, int, int, str]]:
+        """Проверяет и нормализует решение LLM под контракт RobotCommand."""
+        action = str(payload.get("action", "")).upper()
+        if action not in ACTIONS:
+            return None
+
+        try:
+            speed = int(payload.get("speed", 0))
+        except (TypeError, ValueError):
+            return None
+
+        try:
+            duration_ms = int(payload.get("duration_ms", 0))
+        except (TypeError, ValueError):
+            return None
+
+        reason = str(payload.get("reason", "llm_decision")).strip() or "llm_decision"
+        return action, max(0, min(100, speed)), max(0, duration_ms), reason
+
     def decide(self, state: Optional[RobotState]) -> RobotCommand:
         """Основная стратегия принятия решения для нового state."""
         if state is None:
             return self._new_command("STOP", "unknown", "state_missing", speed=0, duration_ms=0)
+        llm_raw = self._request_ollama(state)
+        if llm_raw is None:
+            return self._new_command("STOP", state.state_id, "llm_unavailable_fail_safe", speed=0, duration_ms=0)
 
-        proximity_danger = (
-            state.sensor.valid
-            and state.sensor.distance_cm is not None
-            and state.sensor.distance_cm < self.config.obstacle_distance_cm
-        )
-        camera_danger = (
-            state.camera.valid
-            and state.camera.obstacle
-            and state.camera.confidence >= self.config.camera_confidence_threshold
-        )
+        normalized = self._normalize_llm_decision(llm_raw)
+        if normalized is None:
+            return self._new_command("STOP", state.state_id, "llm_invalid_response_fail_safe", speed=0, duration_ms=0)
 
-        if proximity_danger and camera_danger:
-            candidate = self._new_command("TURN_LEFT", state.state_id, "fused_obstacle_detected", speed=25, duration_ms=350)
-        elif proximity_danger:
-            candidate = self._new_command("TURN_LEFT", state.state_id, "proximity_obstacle_detected", speed=30, duration_ms=300)
-        elif camera_danger:
-            candidate = self._new_command("TURN_LEFT", state.state_id, "camera_obstacle_detected", speed=15, duration_ms=280)
-        elif state.camera.valid and state.camera.target_x is not None:
-            if state.camera.target_x > self.config.target_deadband:
-                candidate = self._new_command("TURN_RIGHT", state.state_id, "target_alignment_right", speed=15, duration_ms=180)
-            elif state.camera.target_x < -self.config.target_deadband:
-                candidate = self._new_command("TURN_LEFT", state.state_id, "target_alignment_left", speed=25, duration_ms=180)
-            else:
-                candidate = self._new_command("FORWARD", state.state_id, "target_centered_path_clear", speed=35, duration_ms=220)
-        elif not state.sensor.valid and not state.camera.valid:
-            candidate = self._new_command("STOP", state.state_id, "all_sensors_invalid", speed=0, duration_ms=0)
-        else:
-            candidate = self._new_command("FORWARD", state.state_id, "path_clear_default", speed=30, duration_ms=220)
-
-        return candidate
+        action, speed, duration_ms, reason = normalized
+        return self._new_command(action, state.state_id, reason, speed=speed, duration_ms=duration_ms)
 
 
 def run_brain_loop(config: BrainConfig, stop_event: Optional[threading.Event] = None) -> None:
@@ -139,8 +230,23 @@ def run_brain_loop(config: BrainConfig, stop_event: Optional[threading.Event] = 
 
 def parse_args() -> BrainConfig:
     parser = argparse.ArgumentParser(description="Brain module")
-    _ = parser.parse_args()
-    return BrainConfig()
+    parser.add_argument("--state-path", default=str(BrainConfig.state_path), help="Path to protocol/state.json")
+    parser.add_argument("--command-path", default=str(BrainConfig.command_path), help="Path to protocol/command.json")
+    parser.add_argument("--ollama-base-url", default=BrainConfig.ollama_base_url, help="Ollama URL, e.g. http://localhost:11434")
+    parser.add_argument("--ollama-model", default=BrainConfig.ollama_model, help="Ollama local model tag")
+    parser.add_argument("--ollama-timeout-s", type=float, default=BrainConfig.ollama_timeout_s, help="Timeout for Ollama requests in seconds")
+    parser.add_argument("--llm-temperature", type=float, default=BrainConfig.llm_temperature, help="Sampling temperature for LLM")
+    parser.add_argument("--llm-num-predict", type=int, default=BrainConfig.llm_num_predict, help="Max tokens predicted by LLM")
+    args = parser.parse_args()
+    return BrainConfig(
+        state_path=Path(args.state_path),
+        command_path=Path(args.command_path),
+        ollama_base_url=str(args.ollama_base_url),
+        ollama_model=str(args.ollama_model),
+        ollama_timeout_s=max(0.1, float(args.ollama_timeout_s)),
+        llm_temperature=max(0.0, float(args.llm_temperature)),
+        llm_num_predict=max(1, int(args.llm_num_predict)),
+    )
 
 
 def main() -> None:

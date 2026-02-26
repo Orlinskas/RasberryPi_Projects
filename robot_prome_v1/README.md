@@ -134,6 +134,17 @@ python3 vision.py --interval 3
 python3 brain.py
 ```
 
+Пример запуска с локальной моделью Ollama:
+
+```bash
+python3 brain.py \
+  --ollama-base-url http://localhost:11434 \
+  --ollama-model qwen2.5:7b \
+  --ollama-timeout-s 8 \
+  --llm-temperature 0.1 \
+  --llm-num-predict 96
+```
+
 ### Controller (автоматический режим)
 
 ```bash
@@ -163,6 +174,84 @@ python3 controller.py --mode interactive
 python3 main.py --vision-interval 3 --controller-poll 0.05
 ```
 
-## Текущее ограничение
+## Локальная нейросеть на Raspberry Pi (Ollama)
+
+Все ниже работает полностью локально: модель хранится на Raspberry Pi и запросы из `brain.py` идут только на `localhost`.
+
+### 1) Установка Ollama на Raspberry Pi
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+Проверка, что сервис поднят:
+
+```bash
+ollama --version
+curl http://localhost:11434/api/tags
+```
+
+### 2) Загрузка модели до 10 ГБ
+
+Рекомендуемый старт:
+
+```bash
+ollama pull qwen2.5:7b
+```
+
+Проверить локально скачанные модели:
+
+```bash
+ollama list
+```
+
+### 3) Проверка генерации ответа от локальной LLM
+
+```bash
+ollama run qwen2.5:7b "Return JSON only: {\"action\":\"STOP\",\"speed\":0,\"duration_ms\":0,\"reason\":\"healthcheck\"}"
+```
+
+### 4) Проверка офлайн-режима
+
+1. После `ollama pull ...` отключить Raspberry Pi от интернета.
+2. Повторить `ollama run ...`.
+3. Если ответ получен, модель работает полностью локально.
+
+### 5) Интеграция с `brain.py`
+
+`brain.py` отправляет в Ollama состояние робота и ожидает строго JSON-решение:
+
+- `action`: `FORWARD | BACKWARD | TURN_LEFT | TURN_RIGHT | STOP`
+- `speed`: `0..100`
+- `duration_ms`: `>= 0`
+- `reason`: краткая причина
+
+Если Ollama недоступен, вернул невалидный JSON или неверные поля, `brain.py` записывает fail-safe команду `STOP`.
+
+### 6) Диагностика
+
+Проверка HTTP-ответа локального сервиса:
+
+```bash
+curl http://localhost:11434/api/tags
+```
+
+Проверка `brain.py` с явным путём протокола:
+
+```bash
+python3 brain.py \
+  --state-path protocol/state.json \
+  --command-path protocol/command.json \
+  --ollama-base-url http://localhost:11434 \
+  --ollama-model qwen2.5:7b
+```
+
+Если в логах `brain.py` есть `llm_unavailable_fail_safe` или `llm_invalid_response_fail_safe`, проверьте:
+
+- запущен ли `ollama` сервис;
+- установлен ли локально тег модели (`ollama list`);
+- доступен ли `http://localhost:11434`.
+
+## Текущие ограничения
 
 `vision` и `feelings` оба пишут в `state.json`, поэтому для реального прод-режима лучше перейти на единый writer или очередь событий.

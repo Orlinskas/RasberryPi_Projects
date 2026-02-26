@@ -20,7 +20,7 @@ LOGGER = logging.getLogger("vision")
 STATE_PATH = Path(__file__).with_name("protocol") / "state.json"
 CAPTURE_DIR = Path(__file__).with_name("captures")
 
-INTERVAL_S = 10.0
+INTERVAL_S = 5
 
 ECHO_PIN = 0
 TRIG_PIN = 1
