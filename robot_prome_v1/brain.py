@@ -41,10 +41,10 @@ class BrainConfig:
     state_path: Path = Path(__file__).with_name("protocol") / "state.json"
     command_path: Path = Path(__file__).with_name("protocol") / "command.json"
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "qwen2.5:3b"
-    ollama_timeout_s: float = 30
-    llm_temperature: float = 0.1
-    llm_num_predict: int = 96
+    ollama_model: str = "qwen2.5:0.5b"
+    ollama_timeout_s: float = 100
+    llm_temperature: float = 0.0
+    llm_num_predict: int = 32
     llm_keep_alive: str = "30m"
 
 
@@ -89,11 +89,16 @@ class BrainEngine:
     @staticmethod
     def _system_prompt() -> str:
         """Системная инструкция для модели с жестким JSON-контрактом."""
+        allowed_actions = ", ".join(ACTIONS)
         return (
             "You are a decision engine for a mobile robot. "
+            "The robot is small and curious: it should search for interesting objects and highlight them with its flashlight. "
+            "Move very carefully. Keep safe clearance from obstacles and try to go around them when they are about 50 cm away or closer. "
+            "TURN_LEFT and TURN_RIGHT rotate the robot in place (no forward movement). "
+            "After each TURN_LEFT or TURN_RIGHT command, the robot spends a long time standing still and thinking, so use turns only when necessary. "
             "You receive robot state JSON and must output ONLY a JSON object with keys: "
             "action, speed, duration_ms, reason. "
-            "Allowed action values: FORWARD, BACKWARD, TURN_LEFT, TURN_RIGHT, STOP. "
+            f"Allowed action values: {allowed_actions}. "
             "speed must be integer 0..100. duration_ms must be integer >= 0. "
             "Do not add markdown, comments, or extra keys."
         )

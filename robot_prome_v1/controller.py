@@ -63,6 +63,7 @@ from shared import GPIO_LOCK, RobotCommand, read_json
 # GPIO-пины моторов (BCM)
 IN1, IN2, IN3, IN4 = 20, 21, 19, 26
 ENA, ENB = 16, 13
+LIGHT_PIN = 6
 
 # Базовые скорости ШИМ
 SPEED = 30
@@ -87,6 +88,7 @@ def setup():
         GPIO.setup(IN2, GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(IN3, GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(IN4, GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(LIGHT_PIN, GPIO.OUT, initial=GPIO.LOW)
 
         pwm_ena = GPIO.PWM(ENA, 2000)
         pwm_enb = GPIO.PWM(ENB, 2000)
@@ -142,10 +144,19 @@ def stop():
         pwm_enb.ChangeDutyCycle(0)
 
 
+def light_on():
+    GPIO.output(LIGHT_PIN, GPIO.HIGH)
+
+
+def light_off():
+    GPIO.output(LIGHT_PIN, GPIO.LOW)
+
+
 def cleanup():
     """Безопасная деинициализация GPIO."""
     global pwm_ena, pwm_enb
     with GPIO_LOCK:
+        light_off()
         stop()
         if pwm_ena is not None:
             pwm_ena.stop()
@@ -184,6 +195,10 @@ def execute_command(command: RobotCommand) -> None:
         turn_left()
     elif action == "TURN_RIGHT":
         turn_right()
+    elif action == "LIGHT_ON":
+        light_on()
+    elif action == "LIGHT_OFF":
+        light_off()
     else:
         stop()
 
@@ -259,7 +274,7 @@ def interactive_main():
     """Ручной режим для отладки по клавишам."""
     setup()
     print("Controller started.")
-    print("Commands: W - forward, S - backward, A - left, D - right, C - stop, Q - quit")
+    print("Commands: W - forward, S - backward, A - left, D - right, C - stop, L - light on, O - light off, Q - quit")
 
     try:
         while True:
@@ -280,10 +295,16 @@ def interactive_main():
             elif command in ("C", "С"):
                 stop()
                 print("Stop")
+            elif command == "L":
+                light_on()
+                print("Light on")
+            elif command == "O":
+                light_off()
+                print("Light off")
             elif command == "Q":
                 break
             else:
-                print("Unknown command. Use W/S/A/D/C/Q")
+                print("Unknown command. Use W/S/A/D/C/L/O/Q")
     except KeyboardInterrupt:
         pass
     finally:
