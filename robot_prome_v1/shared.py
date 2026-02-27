@@ -4,8 +4,7 @@
 
 Этот файл содержит:
 - контракты `protocol/state.json` и `protocol/command.json`;
-- безопасный atomic-write JSON (без битых файлов при падении);
-- проверку "устаревших" данных по timestamp.
+- безопасный atomic-write JSON (без битых файлов при падении).
 """
 
 from __future__ import annotations
@@ -14,7 +13,6 @@ import json
 import os
 import tempfile
 import threading
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
@@ -75,7 +73,6 @@ def zero_state_payload() -> Dict[str, Any]:
     """Возвращает нулевое (стартовое) состояние робота."""
     return {
         "state_id": "st_000000",
-        "timestamp": 0.0,
         "sensor": {
             "obstacle_cm": None,
         },
@@ -90,22 +87,10 @@ def zero_command_payload() -> Dict[str, Any]:
     """Возвращает нулевую команду STOP."""
     return {
         "command_id": "cmd_000000",
-        "timestamp": 0.0,
         "based_on_state_id": "st_000000",
         "action": "STOP",
         "reason": "initial_state",
     }
-
-
-def now_ts() -> float:
-    """Текущее время в формате Unix timestamp."""
-    return time.time()
-
-
-def is_stale(timestamp: float, max_age_ms: int, now: Optional[float] = None) -> bool:
-    """Проверяет, не устарели ли данные относительно текущего времени."""
-    ts_now = now if now is not None else now_ts()
-    return (ts_now - timestamp) * 1000.0 > float(max_age_ms)
 
 
 def atomic_write_json(path: PathLike, payload: Dict[str, Any]) -> None:
@@ -202,14 +187,12 @@ class RobotState:
     """Полный снимок состояния робота (выход vision)."""
 
     state_id: str = ""
-    timestamp: float = field(default_factory=now_ts)
     sensor: ProximityState = field(default_factory=ProximityState)
     camera: CameraState = field(default_factory=CameraState)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "state_id": self.state_id,
-            "timestamp": self.timestamp,
             "sensor": self.sensor.to_dict(),
             "camera": self.camera.to_dict(),
         }
@@ -218,14 +201,8 @@ class RobotState:
     def from_dict(cls, payload: Dict[str, Any]) -> "RobotState":
         sensor_payload = payload.get("sensor", payload.get("proximity", {}))
         cam = payload.get("camera", {})
-        timestamp = payload.get("timestamp", now_ts())
-        try:
-            timestamp = float(timestamp)
-        except (TypeError, ValueError):
-            timestamp = now_ts()
         return cls(
             state_id=str(payload.get("state_id", "")),
-            timestamp=timestamp,
             sensor=ProximityState.from_dict(sensor_payload if isinstance(sensor_payload, dict) else {}),
             camera=CameraState.from_dict(cam if isinstance(cam, dict) else {}),
         )
@@ -238,7 +215,6 @@ class RobotCommand:
     """
 
     command_id: str = ""
-    timestamp: float = field(default_factory=now_ts)
     based_on_state_id: str = ""
     action: str = "STOP"
     reason: str = "default_stop"
@@ -246,7 +222,6 @@ class RobotCommand:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "command_id": self.command_id,
-            "timestamp": self.timestamp,
             "based_on_state_id": self.based_on_state_id,
             "action": self.action,
             "reason": self.reason,
@@ -254,17 +229,11 @@ class RobotCommand:
 
     @classmethod
     def from_dict(cls, payload: Dict[str, Any]) -> "RobotCommand":
-        timestamp = payload.get("timestamp", now_ts())
-        try:
-            timestamp = float(timestamp)
-        except (TypeError, ValueError):
-            timestamp = now_ts()
         action = str(payload.get("action", "STOP")).upper()
         if action not in ACTIONS:
             action = "STOP"
         return cls(
             command_id=str(payload.get("command_id", "")),
-            timestamp=timestamp,
             based_on_state_id=str(payload.get("based_on_state_id", "")),
             action=action,
             reason=str(payload.get("reason", "unspecified")),

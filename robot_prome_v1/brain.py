@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-from shared import ACTIONS, RobotCommand, RobotState, atomic_write_json, now_ts, read_json
+from shared import ACTIONS, RobotCommand, RobotState, atomic_write_json, read_json
 
 LOGGER = logging.getLogger("brain")
 POLL_WAIT_S = 0.1
@@ -47,6 +47,7 @@ class BrainConfig:
     llm_temperature: float = 0.1
     llm_num_predict: int = 256
     llm_keep_alive: str = os.getenv("OLLAMA_KEEP_ALIVE", "60m")
+    log_llm_verbose: bool = False
 
 
 class BrainEngine:
@@ -61,7 +62,6 @@ class BrainEngine:
         self._counter += 1
         return RobotCommand(
             command_id=f"cmd_{self._counter:06d}",
-            timestamp=now_ts(),
             based_on_state_id=state_id,
             action=action,
             reason=reason,
@@ -72,7 +72,6 @@ class BrainEngine:
         """Формирует минимальный контекст состояния для LLM."""
         payload = {
             "state_id": state.state_id,
-            "timestamp": state.timestamp,
             "sensor": state.sensor.to_dict(),
             "camera": state.camera.to_dict(),
         }
@@ -154,10 +153,14 @@ Do not add markdown, comments, or extra keys.
             ],
         }
         body = json.dumps(request_payload).encode("utf-8")
+        if self.config.log_llm_verbose:
+            LOGGER.info("Brain LLM request:\n%s", _json_line(request_payload))
         req = urllib.request.Request(url=url, data=body, headers={"Content-Type": "application/json"}, method="POST")
         try:
             with urllib.request.urlopen(req, timeout=self.config.ollama_timeout_s) as response:
                 raw = response.read().decode("utf-8", errors="replace")
+            if self.config.log_llm_verbose:
+                LOGGER.info("Brain LLM raw response:\n%s", raw[:4000] + ("..." if len(raw) > 4000 else ""))
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             LOGGER.warning("Ollama request failed in %.3f s: %s", elapsed_s(), exc)
             return None
@@ -258,6 +261,7 @@ def parse_args() -> BrainConfig:
     parser.add_argument("--ollama-timeout-s", type=float, default=BrainConfig.ollama_timeout_s, help="Timeout for Ollama requests in seconds")
     parser.add_argument("--llm-temperature", type=float, default=BrainConfig.llm_temperature, help="Sampling temperature for LLM")
     parser.add_argument("--llm-num-predict", type=int, default=BrainConfig.llm_num_predict, help="Max tokens predicted by LLM")
+    parser.add_argument("--verbose", action="store_true", help="Логировать запрос и сырой ответ LLM")
     args = parser.parse_args()
     return BrainConfig(
         state_path=Path(args.state_path),
@@ -267,6 +271,7 @@ def parse_args() -> BrainConfig:
         ollama_timeout_s=max(0.1, float(args.ollama_timeout_s)),
         llm_temperature=max(0.0, float(args.llm_temperature)),
         llm_num_predict=max(1, int(args.llm_num_predict)),
+        log_llm_verbose=args.verbose,
     )
 
 

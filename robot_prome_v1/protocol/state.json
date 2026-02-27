@@ -1,18 +1,1 @@
-{
-  "state_id": "st_022230",
-  "timestamp": 1772213022.089639,
-  "sensor": {
-    "obstacle_cm": null
-  },
-  "camera": {
-    "grid": [
-      ".....",
-      ".....",
-      "..R..",
-      ".....",
-      "....."
-    ],
-    "description": null,
-    "target_x": null
-  }
-}
+{"state_id":"st_022230","sensor":{"obstacle_cm":null},"camera":{"grid":[".....",".....","..R..",".....","....."],"description":null,"target_x":null}}

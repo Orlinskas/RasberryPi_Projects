@@ -49,6 +49,7 @@ def parse_args():
     )
     parser.add_argument("--stream-port", type=int, default=STREAM_DEFAULT_PORT, help="Порт видеопотока камеры (браузер)")
     parser.add_argument("--no-stream", action="store_true", help="Отключить видеопоток камеры в браузере")
+    parser.add_argument("--verbose", action="store_true", help="Логировать запрос и сырой ответ нейросети (vision + brain)")
     return parser.parse_args()
 
 
@@ -66,8 +67,13 @@ def main() -> None:
     vision_config = VisionConfig(
         stream_port=args.stream_port,
         stream_enabled=not args.no_stream,
+        log_llm_verbose=args.verbose,
     )
-    brain_config = BrainConfig(state_path=state_path, command_path=command_path)
+    brain_config = BrainConfig(
+        state_path=state_path,
+        command_path=command_path,
+        log_llm_verbose=args.verbose,
+    )
 
     threads = [
         threading.Thread(target=run_vision_loop, args=(vision_config, stop_event), name="vision", daemon=True),

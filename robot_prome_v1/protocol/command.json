@@ -1,7 +1,1 @@
-{
-  "command_id": "cmd_000004",
-  "timestamp": 1772213021.3634582,
-  "based_on_state_id": "st_014835",
-  "action": "STEP_FORWARD",
-  "reason": "Safe state, no obstacles, robot at center"
-}
+{"command_id":"cmd_000004","based_on_state_id":"st_014835","action":"STEP_FORWARD","reason":"Safe state, no obstacles, robot at center"}

@@ -61,7 +61,6 @@ flowchart LR
 `state.json` содержит входы сенсоров:
 
 - `state_id`
-- `timestamp`
 - `sensor.obstacle_cm`
 - `camera.grid`
 - `camera.description`
@@ -69,9 +68,7 @@ flowchart LR
 
 ## Формат `command.json`
 
-- `schema_version`
 - `command_id`
-- `timestamp`
 - `based_on_state_id`
 - `action` (`STEP_FORWARD`, `STEP_BACKWARD`, `TURN_LEFT_15`, `TURN_LEFT_45`, `TURN_RIGHT_15`, `TURN_RIGHT_45`, `STOP`, `LIGHT_ON`, `LIGHT_OFF`)
 - `reason`

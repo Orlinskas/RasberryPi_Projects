@@ -30,7 +30,6 @@ from shared import (
     ProximityState,
     RobotState,
     atomic_write_json,
-    now_ts,
     read_json,
 )
 
@@ -235,6 +234,7 @@ class OpenCVCameraDetector:
         ollama_num_predict: int = OLLAMA_NUM_PREDICT,
         ollama_keep_alive: str = OLLAMA_KEEP_ALIVE,
         frame_buffer: Optional[FrameBuffer] = None,
+        log_llm_verbose: bool = False,
     ) -> None:
         self._capture_dir = capture_dir
         self._frame_buffer = frame_buffer
@@ -249,6 +249,7 @@ class OpenCVCameraDetector:
         self._ollama_temperature = max(0.0, float(ollama_temperature))
         self._ollama_num_predict = max(1, int(ollama_num_predict))
         self._ollama_keep_alive = str(ollama_keep_alive)
+        self._log_llm_verbose = bool(log_llm_verbose)
         self._cap = None
         self._last_image_path: Optional[str] = None
         self._open_warning_logged = False
@@ -339,6 +340,19 @@ class OpenCVCameraDetector:
                 },
             ],
         }
+        if self._log_llm_verbose:
+            log_payload = {
+                **request_payload,
+                "messages": [
+                    request_payload["messages"][0],
+                    {
+                        "role": "user",
+                        "content": request_payload["messages"][1]["content"],
+                        "images": [f"<base64 image, {len(image_b64)} bytes>"],
+                    },
+                ],
+            }
+            LOGGER.info("Vision LLM request (state_id=%s):\n%s", state_id, json.dumps(log_payload, ensure_ascii=False, indent=2))
         body = json.dumps(request_payload).encode("utf-8")
         req = urllib.request.Request(
             url=self._ollama_base_url + "/api/chat",
@@ -349,6 +363,8 @@ class OpenCVCameraDetector:
         try:
             with urllib.request.urlopen(req, timeout=self._ollama_timeout_s) as response:
                 raw = response.read().decode("utf-8", errors="replace")
+            if self._log_llm_verbose:
+                LOGGER.info("Vision LLM raw response (state_id=%s):\n%s", state_id, raw[:4000] + ("..." if len(raw) > 4000 else ""))
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             LOGGER.warning("Vision Ollama request failed in %.3f s (state_id=%s): %s", elapsed_s(), state_id, exc)
             return None
@@ -649,6 +665,7 @@ class VisionConfig:
     capture_keep_last: int = CAPTURE_KEEP_LAST
     stream_port: int = STREAM_DEFAULT_PORT
     stream_enabled: bool = True
+    log_llm_verbose: bool = False
     ollama_base_url: str = OLLAMA_BASE_URL
     ollama_model: str = OLLAMA_MODEL
     ollama_timeout_s: float = OLLAMA_TIMEOUT_S
@@ -675,6 +692,7 @@ def build_sensors(
             ollama_num_predict=config.ollama_num_predict,
             ollama_keep_alive=config.ollama_keep_alive,
             frame_buffer=frame_buffer,
+            log_llm_verbose=config.log_llm_verbose,
         )
     return UltrasonicProximitySensor(), camera
 
@@ -720,7 +738,6 @@ def _prune_capture_images(capture_dir: Path, keep_last: int) -> None:
 def _build_state(state_counter: int, proximity: ProximitySensor, camera: CameraDetector) -> RobotState:
     """Формирует единый state из всех входов vision."""
     state_id = f"st_{state_counter:06d}"
-    ts = now_ts()
 
     proximity_state = ProximityState()
     camera_state = CameraState()
@@ -743,7 +760,6 @@ def _build_state(state_counter: int, proximity: ProximitySensor, camera: CameraD
 
     return RobotState(
         state_id=state_id,
-        timestamp=ts,
         sensor=proximity_state,
         camera=camera_state,
     )
@@ -796,6 +812,7 @@ def parse_args() -> VisionConfig:
     parser.add_argument("--ollama-num-predict", type=int, default=VisionConfig.ollama_num_predict, help="Макс. токенов в ответе vision модели")
     parser.add_argument("--stream-port", type=int, default=STREAM_DEFAULT_PORT, help="Порт для видеопотока в браузере")
     parser.add_argument("--no-stream", action="store_true", help="Отключить видеопоток в браузере")
+    parser.add_argument("--verbose", action="store_true", help="Логировать запрос и сырой ответ vision-модели")
     args = parser.parse_args()
     return VisionConfig(
         capture_keep_last=max(1, int(args.capture_keep_last)),
@@ -806,6 +823,7 @@ def parse_args() -> VisionConfig:
         ollama_num_predict=max(1, int(args.ollama_num_predict)),
         stream_port=max(1024, int(args.stream_port)),
         stream_enabled=not args.no_stream,
+        log_llm_verbose=args.verbose,
     )
 
 
