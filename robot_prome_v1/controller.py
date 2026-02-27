@@ -63,7 +63,8 @@ from shared import GPIO_LOCK, RobotCommand, TURN_DURATION_MS, TURN_SPEED, read_j
 # GPIO-пины моторов (BCM)
 IN1, IN2, IN3, IN4 = 20, 21, 19, 26
 ENA, ENB = 16, 13
-LIGHT_PIN = 6
+# RGB LED (Yahboom Tank: ColorLED.py)
+LED_R, LED_G, LED_B = 22, 27, 24
 
 # Базовые скорости ШИМ (для FORWARD/BACKWARD)
 SPEED = 30
@@ -87,7 +88,9 @@ def setup():
         GPIO.setup(IN2, GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(IN3, GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(IN4, GPIO.OUT, initial=GPIO.LOW)
-        GPIO.setup(LIGHT_PIN, GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(LED_R, GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(LED_G, GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(LED_B, GPIO.OUT, initial=GPIO.LOW)
 
         pwm_ena = GPIO.PWM(ENA, 2000)
         pwm_enb = GPIO.PWM(ENB, 2000)
@@ -144,11 +147,17 @@ def stop():
 
 
 def light_on():
-    GPIO.output(LIGHT_PIN, GPIO.HIGH)
+    """Включает RGB LED (белый: R+G+B)."""
+    GPIO.output(LED_R, GPIO.HIGH)
+    GPIO.output(LED_G, GPIO.HIGH)
+    GPIO.output(LED_B, GPIO.HIGH)
 
 
 def light_off():
-    GPIO.output(LIGHT_PIN, GPIO.LOW)
+    """Выключает RGB LED."""
+    GPIO.output(LED_R, GPIO.LOW)
+    GPIO.output(LED_G, GPIO.LOW)
+    GPIO.output(LED_B, GPIO.LOW)
 
 
 def cleanup():
