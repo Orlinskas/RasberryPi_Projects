@@ -34,7 +34,25 @@ def zero_state_payload() -> Dict[str, Any]:
             "obstacle_cm": None,
         },
         "camera": {
-            "obstacle_cm": None,
+            "scene_map": {
+                "grid_size": 7,
+                "robot_cell": {"row": 3, "col": 3},
+                "grid": [
+                    ".......",
+                    ".......",
+                    ".......",
+                    "...R...",
+                    ".......",
+                    ".......",
+                    ".......",
+                ],
+                "legend": {
+                    ".": "free",
+                    "R": "robot",
+                    "O": "obstacle",
+                    "T": "target",
+                },
+            },
             "description": None,
             "target_x": None,
         },
@@ -127,24 +145,22 @@ class ProximityState:
 class CameraState:
     """Состояние камеры/детектора."""
 
-    obstacle_cm: Optional[float] = None
+    scene_map: Optional[Dict[str, Any]] = None
     description: Optional[str] = None
     target_x: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "obstacle_cm": self.obstacle_cm,
+            "scene_map": self.scene_map,
             "description": self.description,
             "target_x": self.target_x,
         }
 
     @classmethod
     def from_dict(cls, payload: Dict[str, Any]) -> "CameraState":
-        obstacle_cm = payload.get("obstacle_cm")
-        try:
-            obstacle_cm = float(obstacle_cm) if obstacle_cm is not None else None
-        except (TypeError, ValueError):
-            obstacle_cm = None
+        scene_map = payload.get("scene_map")
+        if not isinstance(scene_map, dict):
+            scene_map = None
         target_x = payload.get("target_x")
         try:
             target_x = float(target_x) if target_x is not None else None
@@ -156,7 +172,7 @@ class CameraState:
         if description is not None:
             description = str(description).strip() or None
         return cls(
-            obstacle_cm=obstacle_cm if obstacle_cm is None else max(0.0, obstacle_cm),
+            scene_map=scene_map,
             description=description,
             target_x=target_x,
         )

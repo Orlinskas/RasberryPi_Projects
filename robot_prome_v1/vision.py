@@ -61,7 +61,7 @@ except ImportError:  # pragma: no cover
 class CameraObservation:
     """Нормализованный результат camera + vision модели."""
 
-    obstacle_cm: Optional[float]
+    scene_map: Dict[str, Any]
     description: Optional[str]
     target_x: Optional[float]
 
@@ -225,8 +225,12 @@ class OpenCVCameraDetector:
     def _vision_system_prompt() -> str:
         return (
             "You are a camera perception engine for a mobile robot. "
-            "Return ONLY one JSON object with keys: obstacle_cm, description, target_x. "
-            "obstacle_cm is numeric centimeters or null. "
+            "Return ONLY one JSON object with keys: scene_map, description, target_x. "
+            "scene_map must use EXACT 7x7 grid schema with keys: grid_size, robot_cell, grid, legend. "
+            "grid_size must be 7. robot_cell must be {'row':3,'col':3}. "
+            "grid must be array of 7 strings, each length 7, symbols only: '.', 'R', 'O', 'T'. "
+            "R = robot center at row 3 col 3, O = obstacle, T = target. "
+            "legend must be object mapping symbols to meanings. "
             "description is short object scene summary (5-15 words) or null. "
             "target_x is number in range -1.0..1.0 where -1 is left, 0 center, 1 right; or null if unknown. "
             "No markdown, no extra keys."
@@ -237,7 +241,8 @@ class OpenCVCameraDetector:
         payload = {
             "state_id": state_id,
             "task": (
-                "Estimate front obstacle distance in cm, short scene description, and horizontal target_x."
+                "Build a strict 7x7 top-down map with robot in center, visible obstacles, and target if present. "
+                "Also return short scene description and horizontal target_x."
             ),
         }
         return json.dumps(payload, ensure_ascii=True, sort_keys=True)
@@ -332,15 +337,117 @@ class OpenCVCameraDetector:
         return raw
 
     @staticmethod
-    def _normalize_vision_payload(payload: Dict[str, Any]) -> CameraObservation:
-        obstacle_cm = payload.get("obstacle_cm")
-        try:
-            obstacle_cm = float(obstacle_cm) if obstacle_cm is not None else None
-        except (TypeError, ValueError):
-            obstacle_cm = None
-        if obstacle_cm is not None:
-            obstacle_cm = max(0.0, obstacle_cm)
+    def _build_grid_7x7(
+        obstacles: list[Dict[str, Any]],
+        target: Optional[Dict[str, Any]],
+    ) -> list[str]:
+        grid = [["." for _ in range(7)] for _ in range(7)]
+        robot_row, robot_col = 3, 3
+        grid[robot_row][robot_col] = "R"
 
+        for obstacle in obstacles:
+            try:
+                col = int(round(float(obstacle["x"]) * 6.0))
+                row = int(round(float(obstacle["y"]) * 6.0))
+            except (KeyError, TypeError, ValueError):
+                continue
+            row = max(0, min(6, row))
+            col = max(0, min(6, col))
+            if row == robot_row and col == robot_col:
+                continue
+            grid[row][col] = "O"
+
+        if isinstance(target, dict):
+            try:
+                t_col = int(round(float(target["x"]) * 6.0))
+                t_row = int(round(float(target["y"]) * 6.0))
+            except (KeyError, TypeError, ValueError):
+                t_row, t_col = -1, -1
+            if t_row >= 0 and t_col >= 0:
+                t_row = max(0, min(6, t_row))
+                t_col = max(0, min(6, t_col))
+                if not (t_row == robot_row and t_col == robot_col):
+                    grid[t_row][t_col] = "T"
+
+        return ["".join(row_cells) for row_cells in grid]
+
+    @staticmethod
+    def _empty_scene_map_7x7() -> Dict[str, Any]:
+        grid = [["." for _ in range(7)] for _ in range(7)]
+        grid[3][3] = "R"
+        return {
+            "grid_size": 7,
+            "robot_cell": {"row": 3, "col": 3},
+            "grid": ["".join(row_cells) for row_cells in grid],
+            "legend": {
+                ".": "free",
+                "R": "robot",
+                "O": "obstacle",
+                "T": "target",
+            },
+        }
+
+    @staticmethod
+    def _normalize_scene_map(payload: Dict[str, Any], target_x: Optional[float]) -> Dict[str, Any]:
+        scene_map = payload.get("scene_map")
+        if not isinstance(scene_map, dict):
+            scene_map = {}
+
+        obstacles_raw = scene_map.get("obstacles")
+        obstacles: list[Dict[str, Any]] = []
+        if isinstance(obstacles_raw, list):
+            for item in obstacles_raw:
+                if not isinstance(item, dict):
+                    continue
+                x = item.get("x")
+                y = item.get("y")
+                try:
+                    x = float(x)
+                    y = float(y)
+                except (TypeError, ValueError):
+                    continue
+                obstacle: Dict[str, Any] = {"x": max(0.0, min(1.0, x)), "y": max(0.0, min(1.0, y))}
+                label = item.get("label")
+                if label is not None:
+                    obstacle["label"] = str(label).strip() or "obstacle"
+                obstacles.append(obstacle)
+
+        target_raw = scene_map.get("target")
+        target: Optional[Dict[str, Any]] = None
+        if isinstance(target_raw, dict):
+            tx = target_raw.get("x")
+            ty = target_raw.get("y")
+            try:
+                tx = float(tx)
+                ty = float(ty)
+                target = {"x": max(0.0, min(1.0, tx)), "y": max(0.0, min(1.0, ty))}
+                label = target_raw.get("label")
+                if label is not None:
+                    target["label"] = str(label).strip() or "target"
+            except (TypeError, ValueError):
+                target = None
+        elif target_x is not None:
+            target = {
+                "x": max(0.0, min(1.0, (target_x + 1.0) / 2.0)),
+                "y": 0.35,
+                "label": "target",
+            }
+
+        normalized_grid = OpenCVCameraDetector._build_grid_7x7(obstacles=obstacles, target=target)
+        return {
+            "grid_size": 7,
+            "robot_cell": {"row": 3, "col": 3},
+            "grid": normalized_grid,
+            "legend": {
+                ".": "free",
+                "R": "robot",
+                "O": "obstacle",
+                "T": "target",
+            },
+        }
+
+    @staticmethod
+    def _normalize_vision_payload(payload: Dict[str, Any]) -> CameraObservation:
         description = payload.get("description")
         if description is not None:
             description = str(description).strip() or None
@@ -352,9 +459,10 @@ class OpenCVCameraDetector:
             target_x = None
         if target_x is not None:
             target_x = max(-1.0, min(1.0, target_x))
+        scene_map = OpenCVCameraDetector._normalize_scene_map(payload, target_x=target_x)
 
         return CameraObservation(
-            obstacle_cm=obstacle_cm,
+            scene_map=scene_map,
             description=description,
             target_x=target_x,
         )
@@ -384,7 +492,7 @@ class OpenCVCameraDetector:
         )
         if model_payload is None:
             return CameraObservation(
-                obstacle_cm=None,
+                scene_map=OpenCVCameraDetector._empty_scene_map_7x7(),
                 description=None,
                 target_x=None,
             )
@@ -481,7 +589,7 @@ def _build_state(state_counter: int, proximity: ProximitySensor, camera: CameraD
         observation = camera.read_observation(state_id)
         if observation is not None:
             camera_state = CameraState(
-                obstacle_cm=observation.obstacle_cm,
+                scene_map=observation.scene_map,
                 description=observation.description,
                 target_x=observation.target_x,
             )

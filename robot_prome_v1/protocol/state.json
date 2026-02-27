@@ -5,7 +5,28 @@
     "obstacle_cm": null
   },
   "camera": {
-    "obstacle_cm": null,
+    "scene_map": {
+      "grid_size": 7,
+      "robot_cell": {
+        "row": 3,
+        "col": 3
+      },
+      "grid": [
+        ".......",
+        ".......",
+        ".......",
+        "...R...",
+        ".......",
+        ".......",
+        "......."
+      ],
+      "legend": {
+        ".": "free",
+        "R": "robot",
+        "O": "obstacle",
+        "T": "target"
+      }
+    },
     "description": null,
     "target_x": null
   },
