@@ -58,16 +58,19 @@ except ImportError:  # pragma: no cover
 
     GPIO = _MockGPIO()
 
-from shared import GPIO_LOCK, RobotCommand, TURN_DURATION_MS, TURN_SPEED, read_json
+from shared import (
+    ACTION_DURATION_MS,
+    ACTION_SPEED,
+    GPIO_LOCK,
+    RobotCommand,
+    read_json,
+)
 
 # GPIO-пины моторов (BCM)
 IN1, IN2, IN3, IN4 = 20, 21, 19, 26
 ENA, ENB = 16, 13
 # RGB LED (Yahboom Tank: ColorLED.py)
 LED_R, LED_G, LED_B = 22, 27, 24
-
-# Базовые скорости ШИМ (для FORWARD/BACKWARD)
-SPEED = 30
 
 pwm_ena = None
 pwm_enb = None
@@ -98,22 +101,22 @@ def setup():
         pwm_enb.start(0)
 
 
-def forward():
+def forward(speed: int = 30):
     GPIO.output(IN1, GPIO.HIGH)
     GPIO.output(IN2, GPIO.LOW)
     GPIO.output(IN3, GPIO.HIGH)
     GPIO.output(IN4, GPIO.LOW)
-    pwm_ena.ChangeDutyCycle(SPEED)
-    pwm_enb.ChangeDutyCycle(SPEED)
+    pwm_ena.ChangeDutyCycle(speed)
+    pwm_enb.ChangeDutyCycle(speed)
 
 
-def backward():
+def backward(speed: int = 30):
     GPIO.output(IN1, GPIO.LOW)
     GPIO.output(IN2, GPIO.HIGH)
     GPIO.output(IN3, GPIO.LOW)
     GPIO.output(IN4, GPIO.HIGH)
-    pwm_ena.ChangeDutyCycle(SPEED)
-    pwm_enb.ChangeDutyCycle(SPEED)
+    pwm_ena.ChangeDutyCycle(speed)
+    pwm_enb.ChangeDutyCycle(speed)
 
 
 def turn_left(speed: int = 30):
@@ -175,40 +178,24 @@ def cleanup():
         GPIO.cleanup()
 
 
-def _clamp_speed(value, fallback):
-    try:
-        speed = int(value)
-    except (TypeError, ValueError):
-        return fallback
-    return max(0, min(100, speed))
-
-
 def execute_command(command: RobotCommand) -> None:
     """Маппинг action -> функция движения.
-    Для команд поворота (TURN_*_15, TURN_*_45) command.params игнорируются:
-    скорость и длительность берутся из TURN_SPEED и TURN_DURATION_MS в shared.py.
+    Все параметры (speed, duration_ms) заданы в shared.ACTION_SPEED и ACTION_DURATION_MS.
     """
-    global SPEED, _ACTION_UNTIL_TS
+    global _ACTION_UNTIL_TS
 
     action = command.action
-
-    if action in ("FORWARD", "BACKWARD"):
-        speed = _clamp_speed(command.params.speed, SPEED)
-        SPEED = speed
-    elif action in TURN_DURATION_MS:
-        # Для поворотов params игнорируются; скорость и длительность заданы в shared
-        speed = TURN_SPEED.get(action, 30)
-    else:
-        speed = _clamp_speed(command.params.speed, SPEED)
+    speed = ACTION_SPEED.get(action, 30)
+    duration_ms = ACTION_DURATION_MS.get(action, 0)
 
     if action == "FORWARD":
-        forward()
+        forward(speed=speed)
     elif action == "BACKWARD":
-        backward()
+        backward(speed=speed)
     elif action in ("TURN_LEFT_15", "TURN_LEFT_45"):
-        turn_left(speed=TURN_SPEED.get(action, 30))
+        turn_left(speed=speed)
     elif action in ("TURN_RIGHT_15", "TURN_RIGHT_45"):
-        turn_right(speed=TURN_SPEED.get(action, 30))
+        turn_right(speed=speed)
     elif action == "LIGHT_ON":
         light_on()
     elif action == "LIGHT_OFF":
@@ -216,10 +203,6 @@ def execute_command(command: RobotCommand) -> None:
     else:
         stop()
 
-    if action in TURN_DURATION_MS:
-        duration_ms = TURN_DURATION_MS[action]
-    else:
-        duration_ms = max(0, int(command.params.duration_ms))
     _ACTION_UNTIL_TS = time.time() + (duration_ms / 1000.0) if duration_ms > 0 else 0.0
 
     LOGGER.debug(
@@ -227,7 +210,7 @@ def execute_command(command: RobotCommand) -> None:
         command.command_id,
         action,
         command.reason,
-        speed,
+        speed if action in ACTION_SPEED else "—",
     )
 
 
@@ -236,7 +219,7 @@ def execute_command_dry_run(command: RobotCommand) -> None:
     global _ACTION_UNTIL_TS
 
     action = command.action
-    duration_ms = TURN_DURATION_MS.get(action, max(0, int(command.params.duration_ms)))
+    duration_ms = ACTION_DURATION_MS.get(action, 0)
     _ACTION_UNTIL_TS = time.time() + (duration_ms / 1000.0) if duration_ms > 0 else 0.0
 
     LOGGER.debug(

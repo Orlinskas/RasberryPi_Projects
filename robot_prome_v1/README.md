@@ -92,8 +92,6 @@ flowchart LR
 - `timestamp`
 - `based_on_state_id`
 - `action` (`FORWARD`, `BACKWARD`, `TURN_LEFT_15`, `TURN_LEFT_45`, `TURN_RIGHT_15`, `TURN_RIGHT_45`, `STOP`, `LIGHT_ON`, `LIGHT_OFF`)
-- `params.speed` (используется только для FORWARD/BACKWARD)
-- `params.duration_ms` (используется только для FORWARD/BACKWARD; для поворотов — фиксированные значения в `shared.TURN_DURATION_MS`)
 - `reason`
 
 ## Поведение системы
@@ -102,7 +100,7 @@ flowchart LR
 - `brain` не имеет собственного интервала генерации команд:
   - обрабатывает только новый `state_id`
   - если `state_id` не изменился, просто ждет
-- `controller` исполняет действие и держит его `params.duration_ms`
+- `controller` исполняет действие и держит его заданную длительность (из `shared.ACTION_DURATION_MS`)
 - `feelings` фиксирует последнюю выполненную команду в `state.feelings`
 - при завершении `main` сбрасывает `state.json` и `command.json` в нулевое состояние
 
@@ -222,9 +220,9 @@ ollama run qwen2.5:7b "Return JSON only: {\"action\":\"STOP\",\"speed\":0,\"dura
 `brain.py` отправляет в Ollama состояние робота и ожидает строго JSON-решение:
 
 - `action`: `FORWARD | BACKWARD | TURN_LEFT_15 | TURN_LEFT_45 | TURN_RIGHT_15 | TURN_RIGHT_45 | STOP | LIGHT_ON | LIGHT_OFF`
-- `speed`: `0..100`
-- `duration_ms`: `>= 0`
 - `reason`: краткая причина
+
+Параметры движений (speed, duration_ms) заданы в `shared.ACTION_SPEED` и `shared.ACTION_DURATION_MS`.
 
 Если Ollama недоступен, вернул невалидный JSON или неверные поля, `brain.py` записывает fail-safe команду `STOP`.
 

@@ -6,8 +6,8 @@
 - TURN_LEFT_15 / TURN_RIGHT_15 — малый поворот (~15°);
 - TURN_LEFT_45 / TURN_RIGHT_45 — большой поворот (~45°).
 
-Для поворотов command.params (speed, duration_ms) ИГНОРИРУЮТСЯ контроллером.
-Длительности заданы в shared.TURN_DURATION_MS и подбираются отдельно под конкретный робот.
+Все параметры движений (speed, duration_ms) заданы в shared.ACTION_SPEED и ACTION_DURATION_MS.
+command.json не содержит params.
 """
 
 from __future__ import annotations
@@ -24,15 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-from shared import (
-    ACTIONS,
-    CommandParams,
-    RobotCommand,
-    RobotState,
-    atomic_write_json,
-    now_ts,
-    read_json,
-)
+from shared import ACTIONS, RobotCommand, RobotState, atomic_write_json, now_ts, read_json
 
 LOGGER = logging.getLogger("brain")
 POLL_WAIT_S = 0.1
@@ -64,22 +56,14 @@ class BrainEngine:
         self.config = config
         self._counter = 0
 
-    def _new_command(
-        self,
-        action: str,
-        state_id: str,
-        reason: str,
-        speed: int = 40,
-        duration_ms: int = 200,
-    ) -> RobotCommand:
-        """Формирует типовую команду с инкрементным id."""
+    def _new_command(self, action: str, state_id: str, reason: str) -> RobotCommand:
+        """Формирует команду с инкрементным id (параметры движения берутся из shared)."""
         self._counter += 1
         return RobotCommand(
             command_id=f"cmd_{self._counter:06d}",
             timestamp=now_ts(),
             based_on_state_id=state_id,
             action=action,
-            params=CommandParams(speed=speed, duration_ms=duration_ms),
             reason=reason,
         )
 
@@ -120,10 +104,9 @@ class BrainEngine:
             "If camera.target_x is null -> slow search turn (TURN_LEFT_15 or TURN_RIGHT_15). "
             "3) Prevent turn loops: if last_command.last_action was a TURN_* command and state is safe with target_x near center, choose FORWARD instead of another turn. "
             "Motion constraints: TURN_*_15 and TURN_*_45 rotate in place (no forward movement). "
-            "You receive robot state JSON and must output ONLY a JSON object with keys: "
-            "action, speed, duration_ms, reason. "
+            "You receive robot state JSON and must output ONLY a JSON object with keys: action, reason. "
             f"Allowed action values: {allowed_actions}. "
-            "speed must be integer 0..60 (used only for FORWARD/BACKWARD). duration_ms must be integer >= 0 (used only for FORWARD/BACKWARD). "
+            "All movement parameters (speed, duration) are predefined on the robot. "
             "Do not add markdown, comments, or extra keys."
         )
 
@@ -189,39 +172,28 @@ class BrainEngine:
         return decision
 
     @staticmethod
-    def _normalize_llm_decision(payload: Dict[str, Any]) -> Optional[Tuple[str, int, int, str]]:
+    def _normalize_llm_decision(payload: Dict[str, Any]) -> Optional[Tuple[str, str]]:
         """Проверяет и нормализует решение LLM под контракт RobotCommand."""
         action = str(payload.get("action", "")).upper()
         if action not in ACTIONS:
             return None
-
-        try:
-            speed = int(payload.get("speed", 0))
-        except (TypeError, ValueError):
-            return None
-
-        try:
-            duration_ms = int(payload.get("duration_ms", 0))
-        except (TypeError, ValueError):
-            return None
-
         reason = str(payload.get("reason", "llm_decision")).strip() or "llm_decision"
-        return action, max(0, min(100, speed)), max(0, duration_ms), reason
+        return action, reason
 
     def decide(self, state: Optional[RobotState]) -> RobotCommand:
         """Основная стратегия принятия решения для нового state."""
         if state is None:
-            return self._new_command("STOP", "unknown", "state_missing", speed=0, duration_ms=0)
+            return self._new_command("STOP", "unknown", "state_missing")
         llm_raw = self._request_ollama(state)
         if llm_raw is None:
-            return self._new_command("STOP", state.state_id, "llm_unavailable_fail_safe", speed=0, duration_ms=0)
+            return self._new_command("STOP", state.state_id, "llm_unavailable_fail_safe")
 
         normalized = self._normalize_llm_decision(llm_raw)
         if normalized is None:
-            return self._new_command("STOP", state.state_id, "llm_invalid_response_fail_safe", speed=0, duration_ms=0)
+            return self._new_command("STOP", state.state_id, "llm_invalid_response_fail_safe")
 
-        action, speed, duration_ms, reason = normalized
-        return self._new_command(action, state.state_id, reason, speed=speed, duration_ms=duration_ms)
+        action, reason = normalized
+        return self._new_command(action, state.state_id, reason)
 
 
 def run_brain_loop(config: BrainConfig, stop_event: Optional[threading.Event] = None) -> None:

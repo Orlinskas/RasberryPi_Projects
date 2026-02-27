@@ -31,28 +31,32 @@ ACTIONS = [
     "LIGHT_OFF",
 ]
 
-# Параметры поворотов (подбираются отдельно; command.params для поворотов игнорируются)
-TURN_DURATION_MS = {
+# Параметры движений (все заранее заданы; command.json не содержит params)
+ACTION_DURATION_MS = {
+    "FORWARD": 1000,
+    "BACKWARD": 500,
     "TURN_LEFT_15": 200,
-    "TURN_LEFT_45": 500,
+    "TURN_LEFT_45": 400,
     "TURN_RIGHT_15": 200,
-    "TURN_RIGHT_45": 500,
+    "TURN_RIGHT_45": 400,
 }
-TURN_SPEED = {
-    "TURN_LEFT_15": 40,
-    "TURN_LEFT_45": 40,
-    "TURN_RIGHT_15": 40,
-    "TURN_RIGHT_45": 40,
+ACTION_SPEED = {
+    "FORWARD": 20,
+    "BACKWARD": 40,
+    "TURN_LEFT_15": 50,
+    "TURN_LEFT_45": 50,
+    "TURN_RIGHT_15": 50,
+    "TURN_RIGHT_45": 50,
 }
 
 
-def get_effective_duration_ms(action: str, params_duration_ms: int) -> int:
-    """Возвращает duration_ms для действия: для поворотов — из TURN_DURATION_MS, иначе из params."""
-    if action in TURN_DURATION_MS:
-        return TURN_DURATION_MS[action]
-    return params_duration_ms
+def get_effective_duration_ms(action: str) -> int:
+    """Возвращает duration_ms для действия (0 для STOP, LIGHT_*)."""
+    return ACTION_DURATION_MS.get(action, 0)
 
 
+TURN_DURATION_MS = {k: v for k, v in ACTION_DURATION_MS.items() if k.startswith("TURN_")}
+TURN_SPEED = {k: v for k, v in ACTION_SPEED.items() if k.startswith("TURN_")}
 TURN_ACTIONS = frozenset(TURN_DURATION_MS.keys())
 
 PathLike = Union[str, Path]
@@ -104,10 +108,6 @@ def zero_command_payload() -> Dict[str, Any]:
         "timestamp": 0.0,
         "based_on_state_id": "st_000000",
         "action": "STOP",
-        "params": {
-            "speed": 0,
-            "duration_ms": 0,
-        },
         "reason": "initial_state",
     }
 
@@ -251,31 +251,6 @@ class RobotState:
 
 
 @dataclass
-class CommandParams:
-    """Параметры движения для controller."""
-
-    speed: int = 20
-    duration_ms: int = 200
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {"speed": int(self.speed), "duration_ms": int(self.duration_ms)}
-
-    @classmethod
-    def from_dict(cls, payload: Dict[str, Any]) -> "CommandParams":
-        speed = payload.get("speed", 20)
-        duration_ms = payload.get("duration_ms", 200)
-        try:
-            speed = int(speed)
-        except (TypeError, ValueError):
-            speed = 20
-        try:
-            duration_ms = int(duration_ms)
-        except (TypeError, ValueError):
-            duration_ms = 200
-        return cls(speed=max(0, min(100, speed)), duration_ms=max(0, duration_ms))
-
-
-@dataclass
 class FeelingsState:
     """Текущее исполняемое действие, привязанное к последней команде."""
 
@@ -309,13 +284,14 @@ class FeelingsState:
 
 @dataclass
 class RobotCommand:
-    """Команда управления роботом (выход brain, вход controller)."""
+    """Команда управления роботом (выход brain, вход controller).
+    Параметры движения (speed, duration_ms) заданы в shared.ACTION_SPEED и ACTION_DURATION_MS.
+    """
 
     command_id: str = ""
     timestamp: float = field(default_factory=now_ts)
     based_on_state_id: str = ""
     action: str = "STOP"
-    params: CommandParams = field(default_factory=CommandParams)
     reason: str = "default_stop"
 
     def to_dict(self) -> Dict[str, Any]:
@@ -324,13 +300,11 @@ class RobotCommand:
             "timestamp": self.timestamp,
             "based_on_state_id": self.based_on_state_id,
             "action": self.action,
-            "params": self.params.to_dict(),
             "reason": self.reason,
         }
 
     @classmethod
     def from_dict(cls, payload: Dict[str, Any]) -> "RobotCommand":
-        params = payload.get("params", {})
         timestamp = payload.get("timestamp", now_ts())
         try:
             timestamp = float(timestamp)
@@ -344,6 +318,5 @@ class RobotCommand:
             timestamp=timestamp,
             based_on_state_id=str(payload.get("based_on_state_id", "")),
             action=action,
-            params=CommandParams.from_dict(params if isinstance(params, dict) else {}),
             reason=str(payload.get("reason", "unspecified")),
         )
