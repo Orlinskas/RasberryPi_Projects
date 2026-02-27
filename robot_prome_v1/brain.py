@@ -43,8 +43,8 @@ class BrainConfig:
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:0.5b"
     ollama_timeout_s: float = 100
-    llm_temperature: float = 0.0
-    llm_num_predict: int = 32
+    llm_temperature: float = 0.1
+    llm_num_predict: int = 96
     llm_keep_alive: str = "30m"
 
 
