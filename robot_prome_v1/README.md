@@ -138,7 +138,7 @@ python3 brain.py
 
 ```bash
 python3 brain.py \
-  --ollama-base-url http://localhost:11434 \
+  --ollama-base-url http://192.168.0.10:11434 \
   --ollama-model qwen2.5:7b \
   --ollama-timeout-s 8 \
   --llm-temperature 0.1 \
@@ -188,7 +188,7 @@ curl -fsSL https://ollama.com/install.sh | sh
 
 ```bash
 ollama --version
-curl http://localhost:11434/api/tags
+curl http://192.168.0.10:11434/api/tags
 ```
 
 ### 2) Загрузка модели до 10 ГБ
@@ -233,7 +233,7 @@ ollama run qwen2.5:7b "Return JSON only: {\"action\":\"STOP\",\"speed\":0,\"dura
 Проверка HTTP-ответа локального сервиса:
 
 ```bash
-curl http://localhost:11434/api/tags
+curl http://192.168.0.10:11434/api/tags
 ```
 
 Проверка `brain.py` с явным путём протокола:
@@ -242,7 +242,7 @@ curl http://localhost:11434/api/tags
 python3 brain.py \
   --state-path protocol/state.json \
   --command-path protocol/command.json \
-  --ollama-base-url http://localhost:11434 \
+  --ollama-base-url http://192.168.0.10:11434 \
   --ollama-model qwen2.5:7b
 ```
 
@@ -250,7 +250,7 @@ python3 brain.py \
 
 - запущен ли `ollama` сервис;
 - установлен ли локально тег модели (`ollama list`);
-- доступен ли `http://localhost:11434`.
+- доступен ли `http://192.168.0.10:11434`.
 
 ## Текущие ограничения
 

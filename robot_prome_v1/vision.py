@@ -8,6 +8,7 @@ import argparse
 import base64
 import json
 import logging
+import os
 import statistics
 import threading
 import time
@@ -37,9 +38,9 @@ CAMERA_FPS = 30.0
 CAMERA_WARMUP_S = 1.0
 CAPTURE_KEEP_LAST = 30
 
-OLLAMA_BASE_URL = "http://localhost:11434"
-OLLAMA_MODEL = "moondream:latest"
-OLLAMA_TIMEOUT_S = 100
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://192.168.0.10:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_VISION_MODEL", "moondream:latest")
+OLLAMA_TIMEOUT_S = float(os.getenv("OLLAMA_TIMEOUT_S", "30"))
 OLLAMA_TEMPERATURE = 0.1
 OLLAMA_NUM_PREDICT = 96
 OLLAMA_KEEP_ALIVE = "15m"
@@ -506,8 +507,8 @@ def run_vision_loop(config: VisionConfig, stop_event: Optional[threading.Event] 
 def parse_args() -> VisionConfig:
     parser = argparse.ArgumentParser(description="Vision module")
     parser.add_argument("--capture-keep-last", type=int, default=VisionConfig.capture_keep_last, help="Сколько последних снимков хранить")
-    parser.add_argument("--ollama-base-url", default=VisionConfig.ollama_base_url, help="Ollama URL, e.g. http://localhost:11434")
-    parser.add_argument("--ollama-model", default=VisionConfig.ollama_model, help="Быстрая vision модель в Ollama (default: moondream:latest)")
+    parser.add_argument("--ollama-base-url", default=VisionConfig.ollama_base_url, help="Ollama URL, e.g. http://192.168.1.100:11434")
+    parser.add_argument("--ollama-model", default=VisionConfig.ollama_model, help="Ollama model tag for vision")
     parser.add_argument("--ollama-timeout-s", type=float, default=VisionConfig.ollama_timeout_s, help="Timeout запроса vision модели")
     parser.add_argument("--ollama-temperature", type=float, default=VisionConfig.ollama_temperature, help="Sampling temperature для vision модели")
     parser.add_argument("--ollama-num-predict", type=int, default=VisionConfig.ollama_num_predict, help="Макс. токенов в ответе vision модели")

@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import threading
 import time
 import urllib.error
@@ -40,11 +41,11 @@ class BrainConfig:
 
     state_path: Path = Path(__file__).with_name("protocol") / "state.json"
     command_path: Path = Path(__file__).with_name("protocol") / "command.json"
-    ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "qwen2.5:0.5b"
-    ollama_timeout_s: float = 100
+    ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://192.168.0.10:11434")
+    ollama_model: str = os.getenv("OLLAMA_BRAIN_MODEL", "qwen2.5:0.5b")
+    ollama_timeout_s: float = float(os.getenv("OLLAMA_TIMEOUT_S", "30"))
     llm_temperature: float = 0.1
-    llm_num_predict: int = 96
+    llm_num_predict: int = 128
     llm_keep_alive: str = "30m"
 
 
@@ -104,7 +105,7 @@ class BrainEngine:
         )
 
     def _request_ollama(self, state: RobotState) -> Optional[Dict[str, Any]]:
-        """Делает локальный запрос к Ollama и возвращает JSON-ответ модели."""
+        """Делает запрос к Ollama и возвращает JSON-ответ модели."""
         started_at = time.perf_counter()
 
         def elapsed_s() -> float:
@@ -139,7 +140,6 @@ class BrainEngine:
         except json.JSONDecodeError:
             LOGGER.warning("Ollama returned non-JSON payload in %.3f s", elapsed_s())
             return None
-
         if not isinstance(decoded, dict):
             LOGGER.warning("Ollama payload is not an object (%.3f s)", elapsed_s())
             return None
@@ -237,8 +237,8 @@ def parse_args() -> BrainConfig:
     parser = argparse.ArgumentParser(description="Brain module")
     parser.add_argument("--state-path", default=str(BrainConfig.state_path), help="Path to protocol/state.json")
     parser.add_argument("--command-path", default=str(BrainConfig.command_path), help="Path to protocol/command.json")
-    parser.add_argument("--ollama-base-url", default=BrainConfig.ollama_base_url, help="Ollama URL, e.g. http://localhost:11434")
-    parser.add_argument("--ollama-model", default=BrainConfig.ollama_model, help="Ollama local model tag")
+    parser.add_argument("--ollama-base-url", default=BrainConfig.ollama_base_url, help="Ollama URL, e.g. http://192.168.1.100:11434")
+    parser.add_argument("--ollama-model", default=BrainConfig.ollama_model, help="Ollama model tag for brain")
     parser.add_argument("--ollama-timeout-s", type=float, default=BrainConfig.ollama_timeout_s, help="Timeout for Ollama requests in seconds")
     parser.add_argument("--llm-temperature", type=float, default=BrainConfig.llm_temperature, help="Sampling temperature for LLM")
     parser.add_argument("--llm-num-predict", type=int, default=BrainConfig.llm_num_predict, help="Max tokens predicted by LLM")
