@@ -89,7 +89,6 @@ class BrainEngine:
 
     @staticmethod
     def _system_prompt() -> str:
-        """Системная инструкция для модели с жестким JSON-контрактом."""
         allowed_actions = ", ".join(ACTIONS)
         return (
             "You are a decision engine for a mobile robot. "
