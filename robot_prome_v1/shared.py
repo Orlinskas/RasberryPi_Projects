@@ -94,11 +94,6 @@ def zero_state_payload() -> Dict[str, Any]:
             "description": None,
             "target_x": None,
         },
-        "last_command": {
-            "last_action": "STOP",
-            "reason": "initial_state",
-            "remaining_ms": 0,
-        },
     }
 
 def zero_command_payload() -> Dict[str, Any]:
@@ -220,7 +215,6 @@ class RobotState:
     timestamp: float = field(default_factory=now_ts)
     sensor: ProximityState = field(default_factory=ProximityState)
     camera: CameraState = field(default_factory=CameraState)
-    last_command: "FeelingsState" = field(default_factory=lambda: FeelingsState())
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -228,14 +222,12 @@ class RobotState:
             "timestamp": self.timestamp,
             "sensor": self.sensor.to_dict(),
             "camera": self.camera.to_dict(),
-            "last_command": self.last_command.to_dict(),
         }
 
     @classmethod
     def from_dict(cls, payload: Dict[str, Any]) -> "RobotState":
         sensor_payload = payload.get("sensor", payload.get("proximity", {}))
         cam = payload.get("camera", {})
-        last_command_payload = payload.get("last_command", payload.get("feelings", {}))
         timestamp = payload.get("timestamp", now_ts())
         try:
             timestamp = float(timestamp)
@@ -246,39 +238,6 @@ class RobotState:
             timestamp=timestamp,
             sensor=ProximityState.from_dict(sensor_payload if isinstance(sensor_payload, dict) else {}),
             camera=CameraState.from_dict(cam if isinstance(cam, dict) else {}),
-            last_command=FeelingsState.from_dict(last_command_payload if isinstance(last_command_payload, dict) else {}),
-        )
-
-
-@dataclass
-class FeelingsState:
-    """Текущее исполняемое действие, привязанное к последней команде."""
-
-    last_action: str = "STOP"
-    reason: str = "initial_state"
-    remaining_ms: int = 0
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "last_action": self.last_action,
-            "reason": self.reason,
-            "remaining_ms": int(self.remaining_ms),
-        }
-
-    @classmethod
-    def from_dict(cls, payload: Dict[str, Any]) -> "FeelingsState":
-        remaining_ms = payload.get("remaining_ms", 0)
-        try:
-            remaining_ms = int(remaining_ms)
-        except (TypeError, ValueError):
-            remaining_ms = 0
-        last_action = str(payload.get("last_action", payload.get("action", "STOP"))).upper()
-        if last_action not in ACTIONS:
-            last_action = "STOP"
-        return cls(
-            last_action=last_action,
-            reason=str(payload.get("reason", "unspecified")),
-            remaining_ms=max(0, remaining_ms),
         )
 
 

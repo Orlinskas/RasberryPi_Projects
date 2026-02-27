@@ -7,9 +7,8 @@
 - `vision.py` — генерирует новое состояние робота и пишет `state.json`
 - `brain.py` — читает `state.json`, принимает решение, пишет `command.json`
 - `controller.py` — исполняет команду из `command.json` на моторах
-- `feelings.py` — переносит текущую исполняемую команду в `state.feelings`
 - `main.py` — поднимает все потоки и корректно завершает систему
-- `shared.py` — общие модели (`RobotState`, `RobotCommand`, `FeelingsState`) и безопасный JSON I/O
+- `shared.py` — общие модели (`RobotState`, `RobotCommand`) и безопасный JSON I/O
 
 ## Схема взаимодействия
 
@@ -20,12 +19,9 @@ flowchart LR
     state -->|"read new state_id"| brain["brain.py"]
     brain -->|"write"| command["command.json"]
     command -->|"read/execute"| controller["controller.py"]
-    command -->|"read"| feelings["feelings.py"]
-    feelings -->|"update feelings block"| state
     main["main.py"] --> vision
     main --> brain
     main --> controller
-    main --> feelings
 ```
 
 ### Блок-схема основных модулей
@@ -36,21 +32,17 @@ flowchart TD
     visionModule["vision.py"]
     brainModule["brain.py"]
     controllerModule["controller.py"]
-    feelingsModule["feelings.py"]
     stateFile["state.json"]
     commandFile["command.json"]
 
     mainModule --> visionModule
     mainModule --> brainModule
     mainModule --> controllerModule
-    mainModule --> feelingsModule
 
     visionModule -->|"пишет"| stateFile
     brainModule -->|"читает"| stateFile
     brainModule -->|"пишет"| commandFile
     controllerModule -->|"читает и исполняет"| commandFile
-    feelingsModule -->|"читает"| commandFile
-    feelingsModule -->|"обновляет feelings"| stateFile
 ```
 
 ### Шаги цикла
@@ -59,31 +51,21 @@ flowchart TD
 flowchart LR
     step1["1) vision: генерирует новый state_id и пишет state.json"]
     step2["2) brain: читает новый state и создает command.json"]
-    step3["3) controller: исполняет command (speed + duration_ms)"]
-    step4["4) feelings: переносит текущую команду в state.feelings"]
+    step3["3) controller: исполняет command"]
 
-    step1 --> step2 --> step3 --> step4 --> step1
+    step1 --> step2 --> step3 --> step1
 ```
 
 ## Формат `state.json`
 
-`state.json` содержит входы сенсоров + блок `feelings`:
+`state.json` содержит входы сенсоров:
 
-- `schema_version`
 - `state_id`
 - `timestamp`
-- `proximity.distance_cm`
-- `proximity.valid`
-- `camera.obstacle`
+- `sensor.obstacle_cm`
+- `camera.scene_map`
+- `camera.description`
 - `camera.target_x`
-- `camera.confidence`
-- `camera.valid`
-- `feelings.command_id`
-- `feelings.action`
-- `feelings.speed`
-- `feelings.duration_ms`
-- `feelings.reason`
-- `feelings.updated_at`
 
 ## Формат `command.json`
 
@@ -101,7 +83,6 @@ flowchart LR
   - обрабатывает только новый `state_id`
   - если `state_id` не изменился, просто ждет
 - `controller` исполняет действие и держит его заданную длительность (из `shared.ACTION_DURATION_MS`)
-- `feelings` фиксирует последнюю выполненную команду в `state.feelings`
 - при завершении `main` сбрасывает `state.json` и `command.json` в нулевое состояние
 
 ## Логи
@@ -147,12 +128,6 @@ python3 brain.py \
 
 ```bash
 python3 controller.py --mode loop --poll 0.05
-```
-
-### Feelings
-
-```bash
-python3 feelings.py --poll 0.05
 ```
 
 ### Controller (ручной режим)
@@ -206,7 +181,7 @@ ollama list
 ### 3) Проверка генерации ответа от локальной LLM
 
 ```bash
-ollama run qwen2.5:7b "Return JSON only: {\"action\":\"STOP\",\"speed\":0,\"duration_ms\":0,\"reason\":\"healthcheck\"}"
+ollama run qwen2.5:7b "Return JSON only: {\"action\":\"STOP\",\"reason\":\"healthcheck\"}"
 ```
 
 ### 4) Проверка офлайн-режима
@@ -252,4 +227,4 @@ python3 brain.py \
 
 ## Текущие ограничения
 
-`vision` и `feelings` оба пишут в `state.json`, поэтому для реального прод-режима лучше перейти на единый writer или очередь событий.
+`vision` пишет в `state.json`.

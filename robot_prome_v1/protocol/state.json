@@ -1,16 +1,13 @@
 {
   "state_id": "st_000001",
-  "timestamp": 1772076801.14149,
+  "timestamp": 0.0,
   "sensor": {
     "obstacle_cm": null
   },
   "camera": {
     "scene_map": {
       "grid_size": 7,
-      "robot_cell": {
-        "row": 3,
-        "col": 3
-      },
+      "robot_cell": {"row": 3, "col": 3},
       "grid": [
         ".......",
         ".......",
@@ -29,10 +26,5 @@
     },
     "description": null,
     "target_x": null
-  },
-  "last_command": {
-    "last_action": "STOP",
-    "reason": "llm_unavailable_fail_safe",
-    "remaining_ms": 0
   }
 }

@@ -12,7 +12,6 @@ from pathlib import Path
 
 from brain import BrainConfig, run_brain_loop
 from controller import run_controller_loop
-from feelings import run_feelings_loop
 from shared import atomic_write_json, read_json, zero_command_payload, zero_state_payload
 from vision import VisionConfig, run_vision_loop
 
@@ -72,12 +71,6 @@ def main() -> None:
             target=run_controller_loop,
             args=(command_path, 0.05, stop_event, args.mode == "run"),
             name="controller",
-            daemon=True,
-        ),
-        threading.Thread(
-            target=run_feelings_loop,
-            args=(stop_event,),
-            name="feelings",
             daemon=True,
         ),
         threading.Thread(

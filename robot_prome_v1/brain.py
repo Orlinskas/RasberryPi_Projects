@@ -75,7 +75,6 @@ class BrainEngine:
             "timestamp": state.timestamp,
             "sensor": state.sensor.to_dict(),
             "camera": state.camera.to_dict(),
-            "last_command": state.last_command.to_dict(),
         }
         return json.dumps(payload, ensure_ascii=True, sort_keys=True)
 
@@ -102,7 +101,7 @@ class BrainEngine:
             "If -0.2 <= camera.target_x <= 0.2 -> FORWARD. "
             "If camera.target_x > 0.2 -> TURN_RIGHT_15 or TURN_RIGHT_45 (use 45 for large offset). "
             "If camera.target_x is null -> slow search turn (TURN_LEFT_15 or TURN_RIGHT_15). "
-            "3) Prevent turn loops: if last_command.last_action was a TURN_* command and state is safe with target_x near center, choose FORWARD instead of another turn. "
+            "3) Avoid excessive turns: if state is safe with target_x near center, prefer FORWARD. "
             "Motion constraints: TURN_*_15 and TURN_*_45 rotate in place (no forward movement). "
             "You receive robot state JSON and must output ONLY a JSON object with keys: action, reason. "
             f"Allowed action values: {allowed_actions}. "

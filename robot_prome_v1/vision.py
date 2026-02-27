@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Deque, Dict, Optional, Protocol, Tuple
 
-from shared import GPIO_LOCK, CameraState, FeelingsState, ProximityState, RobotState, atomic_write_json, now_ts, read_json
+from shared import GPIO_LOCK, CameraState, ProximityState, RobotState, atomic_write_json, now_ts, read_json
 
 LOGGER = logging.getLogger("vision")
 STATE_PATH = Path(__file__).with_name("protocol") / "state.json"
@@ -621,11 +621,6 @@ def run_vision_loop(config: VisionConfig, stop_event: Optional[threading.Event] 
         while not stop_event.is_set():
             counter += 1
             state = _build_state(counter, proximity, camera)
-            current_state = read_json(STATE_PATH)
-            if isinstance(current_state, dict):
-                last_command_payload = current_state.get("last_command", current_state.get("feelings", {}))
-                if isinstance(last_command_payload, dict):
-                    state.last_command = FeelingsState.from_dict(last_command_payload)
             atomic_write_json(STATE_PATH, state.to_dict())
             LOGGER.info("STATE written: state_id=%s camera=%s sensor=%s", state.state_id, state.camera.to_dict(), state.sensor.to_dict())
     finally:
