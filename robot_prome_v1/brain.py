@@ -45,7 +45,7 @@ class BrainConfig:
     ollama_model: str = os.getenv("OLLAMA_BRAIN_MODEL", "qwen2.5:0.5b")
     ollama_timeout_s: float = float(os.getenv("OLLAMA_TIMEOUT_S", "30"))
     llm_temperature: float = 0.1
-    llm_num_predict: int = 128
+    llm_num_predict: int = 256
     llm_keep_alive: str = "30m"
 
 
@@ -93,10 +93,21 @@ class BrainEngine:
         allowed_actions = ", ".join(ACTIONS)
         return (
             "You are a decision engine for a mobile robot. "
-            "The robot is small and curious: it should search for interesting objects and highlight them with its flashlight. "
-            "Move very carefully. Keep safe clearance from obstacles and try to go around them when they are about 50 cm away or closer. "
-            "TURN_LEFT and TURN_RIGHT rotate the robot in place (no forward movement). "
-            "After each TURN_LEFT or TURN_RIGHT command, the robot spends a long time standing still and thinking, so use turns only when necessary. "
+            "The robot is small and curious and should approach toys when it is safe. "
+            "You receive state JSON with keys sensor.obstacle_cm, camera.obstacle_cm, camera.description, camera.target_x. "
+            "Policy rules (strict priority): "
+            "1) Safety first: let min_obstacle_cm = min(sensor.obstacle_cm, camera.obstacle_cm) using non-null values. "
+            "If min_obstacle_cm is not null and <= 50 then avoid obstacle: choose TURN_LEFT or TURN_RIGHT (or BACKWARD if needed). "
+            "2) If safe (min_obstacle_cm is null or > 50), target seeking mode: "
+            "if camera.description mentions toy-like object (toy, ball, teddy), prefer moving toward it. "
+            "If camera.target_x < -0.2 -> TURN_LEFT. "
+            "If -0.2 <= camera.target_x <= 0.2 -> FORWARD. "
+            "If camera.target_x > 0.2 -> TURN_RIGHT. "
+            "If camera.target_x is null -> slow search turn (TURN_LEFT or TURN_RIGHT). "
+            "3) Prevent turn loops: if last_command.last_action was TURN_LEFT or TURN_RIGHT and state is safe with target_x near center, choose FORWARD instead of another turn. "
+            "Motion constraints: TURN_LEFT and TURN_RIGHT rotate in place (no forward movement). "
+            "Keep turns short and moderate: turn speed <= 40 and duration_ms <= 200 unless emergency. "
+            "Do not use speed=100 in normal conditions. "
             "You receive robot state JSON and must output ONLY a JSON object with keys: "
             "action, speed, duration_ms, reason. "
             f"Allowed action values: {allowed_actions}. "

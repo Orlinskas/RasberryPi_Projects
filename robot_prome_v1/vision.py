@@ -9,6 +9,7 @@ import base64
 import json
 import logging
 import os
+import re
 import statistics
 import threading
 import time
@@ -39,10 +40,10 @@ CAMERA_WARMUP_S = 1.0
 CAPTURE_KEEP_LAST = 30
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://192.168.0.10:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_VISION_MODEL", "moondream:latest")
+OLLAMA_MODEL = os.getenv("OLLAMA_VISION_MODEL", "qwen2.5vl:3b")
 OLLAMA_TIMEOUT_S = float(os.getenv("OLLAMA_TIMEOUT_S", "30"))
 OLLAMA_TEMPERATURE = 0.1
-OLLAMA_NUM_PREDICT = 96
+OLLAMA_NUM_PREDICT = 256
 OLLAMA_KEEP_ALIVE = "15m"
 
 try:
@@ -300,15 +301,35 @@ class OpenCVCameraDetector:
         if not isinstance(content, str):
             return None
 
+        json_text = self._extract_json_object_text(content)
         try:
-            parsed = json.loads(content)
+            parsed = json.loads(json_text)
         except json.JSONDecodeError:
-            LOGGER.warning("Vision model content is not valid JSON in %.3f s (state_id=%s)", elapsed_s(), state_id)
+            preview = content.replace("\n", " ")[:220]
+            LOGGER.warning(
+                "Vision model content is not valid JSON in %.3f s (state_id=%s preview=%r)",
+                elapsed_s(),
+                state_id,
+                preview,
+            )
             return None
         if not isinstance(parsed, dict):
             return None
         LOGGER.info("Vision Ollama response time: %.3f s (model=%s state_id=%s)", elapsed_s(), self._ollama_model, state_id)
         return parsed
+
+    @staticmethod
+    def _extract_json_object_text(content: str) -> str:
+        """Достаёт JSON-объект из текста ответа модели."""
+        raw = content.strip()
+        fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", raw, flags=re.DOTALL | re.IGNORECASE)
+        if fenced:
+            return fenced.group(1).strip()
+        first = raw.find("{")
+        last = raw.rfind("}")
+        if first != -1 and last != -1 and last > first:
+            return raw[first : last + 1]
+        return raw
 
     @staticmethod
     def _normalize_vision_payload(payload: Dict[str, Any]) -> CameraObservation:
