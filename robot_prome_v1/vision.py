@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Deque, Dict, Optional, Protocol, Tuple
 
 from shared import (
-    DEFAULT_GRID_5X5,
+    DEFAULT_DEPTH_MAP,
     GPIO_LOCK,
     CameraState,
     ProximityState,
@@ -42,11 +42,8 @@ TRIG_PIN = 1
 ULTRASONIC_TIMEOUT_S = 0.03
 ULTRASONIC_MIN_CM = 2.0
 ULTRASONIC_MAX_CM = 500.0
-# HC-SR04: минимум 60 мс между измерениями (документация) — иначе эхо от прошлого цикла
 ULTRASONIC_INTER_MEASURE_DELAY_S = 0.06
-# Количество замеров за один вызов read_distance_cm; медиана отсекает выбросы
 ULTRASONIC_SAMPLES_PER_READ = 5
-# Отклонение от медианы > этой доли — считаем выбросом (0.4 = 40%)
 ULTRASONIC_OUTLIER_RATIO = 0.4
 
 CAMERA_INDEX = 0
@@ -59,7 +56,7 @@ CAPTURE_KEEP_LAST = 30
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://192.168.0.18:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_VISION_MODEL", "gemma3")
 OLLAMA_TIMEOUT_S = float(os.getenv("OLLAMA_TIMEOUT_S", "100"))
-OLLAMA_TEMPERATURE = 0.1
+OLLAMA_TEMPERATURE = 0.0
 OLLAMA_NUM_PREDICT = 256
 OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "60m")
 
@@ -95,9 +92,10 @@ class FrameBuffer:
 
 @dataclass
 class CameraObservation:
-    """Нормализованный результат camera + vision модели."""
+    """Нормализованный результат camera + vision модели.
+    depth_map: 3×5 (NEAR/MID/FAR × left..right), chars: _ O T."""
 
-    grid: list
+    depth_map: list
     description: Optional[str]
     target_x: Optional[float]
 
@@ -285,15 +283,14 @@ class OpenCVCameraDetector:
     @staticmethod
     def _vision_system_prompt() -> str:
         return (
-            "You are a camera perception engine for a SMALL mobile robot on the FLOOR. "
-            "Return ONLY one JSON object with keys: grid, description, target_x. "
-            "grid must be array of 5 strings, each length 5. Symbols: '.' free, 'R' robot, 'O' obstacle, 'T' target. "
-            "Robot is always at center: row 2, col 2 (index 0-based). "
-            "ALWAYS mark as obstacle 'O': walls, chairs, tables, furniture, legs, door frames, corners, any solid object the robot might hit. "
-            "Be conservative: if unsure whether something blocks the path, mark it as 'O'. "
-            "description: short scene summary (5-15 words) or null. "
-            "target_x: number -1.0..1.0 (-1 left, 0 center, 1 right) or null. "
-            "No markdown, no extra keys."
+            "JSON: {depth_map, description, target_x}. "
+            "depth_map: 3 strings, 5 chars each. This is a DEPTH MAP of what the camera sees in front. "
+            "Row 0 = NEAR (closest to camera: floor, legs, nearby obstacles). "
+            "Row 1 = MID (medium distance). Row 2 = FAR (distant: walls, horizon, far objects). "
+            "Cols: 0=left, 1=left-center, 2=center, 3=right-center, 4=right. "
+            "Chars: _ = empty, O = obstacle (wall, furniture, chair, person, anything to avoid), T = target (toy, ball, object to approach). "
+            "Put O where obstacles block the path. Put T where the interesting target is. "
+            "description: 5-15 words. target_x: -1 to 1 (horizontal offset of target, null if none)."
         )
 
     @staticmethod
@@ -301,11 +298,9 @@ class OpenCVCameraDetector:
         payload = {
             "state_id": state_id,
             "task": (
-                "Build a 5x5 top-down grid. Robot at center (row 2 col 2). "
-                "Use O for ALL obstacles: chairs, walls, furniture, table legs, doors, anything solid. "
-                "Use . for free floor. Use T for target (toy, ball). "
-                "Mark chairs and walls as O whenever visible — the robot must avoid them. "
-                "Return grid (5 strings of 5 chars), description, target_x."
+                "From this image build a depth_map: 3 rows (NEAR, MID, FAR) × 5 cols (left to right). "
+                "NEAR = what is close (obstacles, floor). MID = medium. FAR = distant (target toy, wall). "
+                "Use _ for empty, O for obstacles, T for target/toy. Example: [\"O____\", \"_____\", \"__T__\"] = obstacle left, target center-far."
             ),
         }
         return json.dumps(payload, ensure_ascii=True, sort_keys=True)
@@ -340,19 +335,6 @@ class OpenCVCameraDetector:
                 },
             ],
         }
-        if self._log_llm_verbose:
-            log_payload = {
-                **request_payload,
-                "messages": [
-                    request_payload["messages"][0],
-                    {
-                        "role": "user",
-                        "content": request_payload["messages"][1]["content"],
-                        "images": [f"<base64 image, {len(image_b64)} bytes>"],
-                    },
-                ],
-            }
-            LOGGER.info("Vision LLM request (state_id=%s):\n%s", state_id, json.dumps(log_payload, ensure_ascii=False, indent=2))
         body = json.dumps(request_payload).encode("utf-8")
         req = urllib.request.Request(
             url=self._ollama_base_url + "/api/chat",
@@ -366,22 +348,25 @@ class OpenCVCameraDetector:
             if self._log_llm_verbose:
                 LOGGER.info("Vision LLM raw response (state_id=%s):\n%s", state_id, raw[:4000] + ("..." if len(raw) > 4000 else ""))
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            LOGGER.warning("Vision Ollama request failed in %.3f s (state_id=%s): %s", elapsed_s(), state_id, exc)
+            LOGGER.error("Vision Ollama request failed (state_id=%s): %s", state_id, exc)
             return None
 
         try:
             decoded = json.loads(raw)
         except json.JSONDecodeError:
-            LOGGER.warning("Vision Ollama returned non-JSON payload in %.3f s (state_id=%s)", elapsed_s(), state_id)
+            LOGGER.error("Vision Ollama returned non-JSON payload (state_id=%s)", state_id)
             return None
         if not isinstance(decoded, dict):
+            LOGGER.error("Vision Ollama response not a dict (state_id=%s)", state_id)
             return None
 
         message = decoded.get("message", {})
         if not isinstance(message, dict):
+            LOGGER.error("Vision Ollama message not a dict (state_id=%s)", state_id)
             return None
         content = message.get("content")
         if not isinstance(content, str):
+            LOGGER.error("Vision Ollama content not a string (state_id=%s)", state_id)
             return None
 
         json_text = self._extract_json_object_text(content)
@@ -389,14 +374,14 @@ class OpenCVCameraDetector:
             parsed = json.loads(json_text)
         except json.JSONDecodeError:
             preview = content.replace("\n", " ")[:220]
-            LOGGER.warning(
-                "Vision model content is not valid JSON in %.3f s (state_id=%s preview=%r)",
-                elapsed_s(),
+            LOGGER.error(
+                "Vision LLM invalid JSON (state_id=%s): %r",
                 state_id,
                 preview,
             )
             return None
         if not isinstance(parsed, dict):
+            LOGGER.error("Vision LLM parsed content not a JSON object (state_id=%s)", state_id)
             return None
         LOGGER.info("Vision Ollama response time: %.3f s (model=%s state_id=%s)", elapsed_s(), self._ollama_model, state_id)
         return parsed
@@ -415,81 +400,28 @@ class OpenCVCameraDetector:
         return raw
 
     @staticmethod
-    def _build_grid_5x5(
-        obstacles: list[Dict[str, Any]],
-        target: Optional[Dict[str, Any]],
-    ) -> list[str]:
-        grid = [["." for _ in range(5)] for _ in range(5)]
-        robot_row, robot_col = 2, 2
-        grid[robot_row][robot_col] = "R"
-
-        for obstacle in obstacles:
-            try:
-                col = int(round(float(obstacle["x"]) * 4.0))
-                row = int(round(float(obstacle["y"]) * 4.0))
-            except (KeyError, TypeError, ValueError):
-                continue
-            row = max(0, min(4, row))
-            col = max(0, min(4, col))
-            if row == robot_row and col == robot_col:
-                continue
-            grid[row][col] = "O"
-
-        if isinstance(target, dict):
-            try:
-                t_col = int(round(float(target["x"]) * 4.0))
-                t_row = int(round(float(target["y"]) * 4.0))
-            except (KeyError, TypeError, ValueError):
-                t_row, t_col = -1, -1
-            if t_row >= 0 and t_col >= 0:
-                t_row = max(0, min(4, t_row))
-                t_col = max(0, min(4, t_col))
-                if not (t_row == robot_row and t_col == robot_col):
-                    grid[t_row][t_col] = "T"
-
-        return ["".join(row_cells) for row_cells in grid]
-
-    @staticmethod
-    def _empty_grid_5x5() -> list:
-        return list(DEFAULT_GRID_5X5)
-
-    @staticmethod
-    def _extract_or_build_grid(payload: Dict[str, Any], target_x: Optional[float]) -> list:
-        """Extract grid from payload or build from obstacles/target."""
-        grid_raw = payload.get("grid")
-        if isinstance(grid_raw, list) and len(grid_raw) == 5:
-            valid = all(isinstance(row, str) and len(row) == 5 for row in grid_raw)
-            if valid:
-                return list(grid_raw)
-
-        scene_map = payload.get("scene_map")
-        obstacles: list[Dict[str, Any]] = []
-        target: Optional[Dict[str, Any]] = None
-        if isinstance(scene_map, dict):
-            obstacles_raw = scene_map.get("obstacles")
-            if isinstance(obstacles_raw, list):
-                for item in obstacles_raw:
-                    if not isinstance(item, dict):
-                        continue
-                    x = item.get("x")
-                    y = item.get("y")
-                    try:
-                        x, y = float(x), float(y)
-                        obstacles.append({"x": max(0.0, min(1.0, x)), "y": max(0.0, min(1.0, y))})
-                    except (TypeError, ValueError):
-                        continue
-            target_raw = scene_map.get("target")
-            if isinstance(target_raw, dict):
-                try:
-                    tx = float(target_raw.get("x", 0))
-                    ty = float(target_raw.get("y", 0))
-                    target = {"x": max(0.0, min(1.0, tx)), "y": max(0.0, min(1.0, ty))}
-                except (TypeError, ValueError):
-                    target = None
-            elif target_x is not None:
-                target = {"x": (target_x + 1.0) / 2.0, "y": 0.35}
-
-        return OpenCVCameraDetector._build_grid_5x5(obstacles=obstacles, target=target)
+    def _extract_depth_map(payload: Dict[str, Any]) -> list:
+        """Берёт depth_map из ответа LLM. Если невалиден — дефолт."""
+        depth_map = payload.get("depth_map")
+        if (
+            isinstance(depth_map, list)
+            and len(depth_map) == 3
+            and all(isinstance(r, str) and len(r) == 5 for r in depth_map)
+        ):
+            rows = [str(r)[:5].ljust(5) for r in depth_map]
+            # Нормализуем символы: только _, O, T
+            result = []
+            for row in rows:
+                norm = "".join(
+                    c if c in "OT_" else "_" for c in row
+                )
+                result.append(norm)
+            return result
+        LOGGER.error(
+            "Vision LLM invalid depth_map (expected 3 strings of 5 chars): %r",
+            depth_map,
+        )
+        return list(DEFAULT_DEPTH_MAP)
 
     @staticmethod
     def _normalize_vision_payload(payload: Dict[str, Any]) -> CameraObservation:
@@ -504,10 +436,10 @@ class OpenCVCameraDetector:
             target_x = None
         if target_x is not None:
             target_x = max(-1.0, min(1.0, target_x))
-        grid = OpenCVCameraDetector._extract_or_build_grid(payload, target_x=target_x)
+        depth_map = OpenCVCameraDetector._extract_depth_map(payload)
 
         return CameraObservation(
-            grid=grid,
+            depth_map=depth_map,
             description=description,
             target_x=target_x,
         )
@@ -542,8 +474,9 @@ class OpenCVCameraDetector:
             state_id=state_id,
         )
         if model_payload is None:
+            LOGGER.error("Vision LLM no valid response, using default depth_map (state_id=%s)", state_id)
             return CameraObservation(
-                grid=OpenCVCameraDetector._empty_grid_5x5(),
+                depth_map=list(DEFAULT_DEPTH_MAP),
                 description=None,
                 target_x=None,
             )
@@ -746,7 +679,7 @@ def _build_state(state_counter: int, proximity: ProximitySensor, camera: CameraD
         observation = camera.read_observation(state_id)
         if observation is not None:
             camera_state = CameraState(
-                grid=observation.grid,
+                depth_map=observation.depth_map,
                 description=observation.description,
                 target_x=observation.target_x,
             )
@@ -812,7 +745,7 @@ def parse_args() -> VisionConfig:
     parser.add_argument("--ollama-num-predict", type=int, default=VisionConfig.ollama_num_predict, help="Макс. токенов в ответе vision модели")
     parser.add_argument("--stream-port", type=int, default=STREAM_DEFAULT_PORT, help="Порт для видеопотока в браузере")
     parser.add_argument("--no-stream", action="store_true", help="Отключить видеопоток в браузере")
-    parser.add_argument("--verbose", action="store_true", help="Логировать запрос и сырой ответ vision-модели")
+    parser.add_argument("--verbose", action="store_true", help="Логировать сырой ответ vision-модели")
     args = parser.parse_args()
     return VisionConfig(
         capture_keep_last=max(1, int(args.capture_keep_last)),

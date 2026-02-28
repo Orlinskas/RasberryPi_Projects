@@ -1,1 +1,11 @@
-{"state_id":"st_022230","sensor":{"obstacle_cm":null},"camera":{"grid":[".....",".....","..R..",".....","....."],"description":null,"target_x":null}}
+{
+  "state_id": "st_000000",
+  "sensor": {
+    "obstacle_cm": null
+  },
+  "camera": {
+    "depth_map": ["_____", "_____", "_____"],
+    "description": null,
+    "target_x": null
+  }
+}

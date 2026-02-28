@@ -49,7 +49,7 @@ def parse_args():
     )
     parser.add_argument("--stream-port", type=int, default=STREAM_DEFAULT_PORT, help="Порт видеопотока камеры (браузер)")
     parser.add_argument("--no-stream", action="store_true", help="Отключить видеопоток камеры в браузере")
-    parser.add_argument("--verbose", action="store_true", help="Логировать запрос и сырой ответ нейросети (vision + brain)")
+    parser.add_argument("--verbose", action="store_true", help="Логировать сырые ответы нейросети (vision + brain)")
     return parser.parse_args()
 
 

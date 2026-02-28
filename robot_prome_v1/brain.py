@@ -86,7 +86,7 @@ You are a decision engine for a mobile robot. The robot is small and curious; it
 
 **Input:** State JSON with:
 - sensor.obstacle_cm — front distance in cm (null if unavailable)
-- camera.grid — 5x5 array of strings: '.' free, 'R' robot (center row 2 col 2), 'O' obstacle, 'T' target. Row 0=top, row 4=bottom, col 0=left, col 4=right.
+- camera.depth_map — depth map 3×5: row 0=NEAR (close), row 1=MID, row 2=FAR. Cols: 0=left..4=right. Chars: '_' empty, 'O' obstacle, 'T' target.
 - camera.description — short scene summary (or null)
 - camera.target_x — horizontal offset of target -1..1 (null if none)
 
@@ -115,20 +115,20 @@ Do not add markdown, comments, or extra keys.
 
 1. **Safety first (strict priority):**
    - If sensor.obstacle_cm is not null and <= 50: avoid obstacle (TURN_LEFT_15, TURN_LEFT_45, TURN_RIGHT_15, TURN_RIGHT_45, or STEP_BACKWARD)
-   - If grid shows obstacle 'O' in front sector (rows 0–1, cols 1–3): avoid
+   - If depth_map has 'O' in NEAR row (row 0): obstacle blocks path — turn AWAY from obstacle. O in cols 0–1 → TURN_RIGHT. O in cols 3–4 → TURN_LEFT. O in center (col 2) → TURN_LEFT or TURN_RIGHT.
 
 2. **Target seeking (when safe):**
    - If camera.description mentions toy-like object (toy, ball, teddy): prefer moving toward it
-   - Infer target position from grid: 'T' in left (cols 0–1) → turn left; right (cols 3–4) → turn right; center (col 2) → STEP_FORWARD
-   - Use camera.target_x if present; else infer from grid (where is 'T' relative to center)
-   - Target left of center → TURN_LEFT_15 or TURN_LEFT_45 (use 45 for large offset)
+   - Infer target position from depth_map: find 'T' in any row. cols 0–1 = left → TURN_LEFT; cols 3–4 = right → TURN_RIGHT; col 2 = center → STEP_FORWARD
+   - Use camera.target_x if present; else infer from depth_map (which col has 'T')
+   - Target left of center → TURN_LEFT_15 or TURN_LEFT_45 (use 45 for cols 0 or 4)
    - Target at center → STEP_FORWARD
-   - Target right of center → TURN_RIGHT_15 or TURN_RIGHT_45 (use 45 for large offset)
+   - Target right of center → TURN_RIGHT_15 or TURN_RIGHT_45 (use 45 for cols 0 or 4)
    - No target visible → slow search turn (TURN_LEFT_15 or TURN_RIGHT_15)
 
 3. **Light:** Enable light in dark rooms. Blink at nearby toys (LIGHT_ON, LIGHT_OFF) but do not get stuck in light-only loops.
 
-4. **Avoid excessive turns:** If state is safe and target is near center (grid col 2 or target_x in [-0.2,0.2]), prefer STEP_FORWARD."""
+4. **Avoid excessive turns:** If state is safe and target is near center (col 2 or target_x in [-0.2,0.2]), prefer STEP_FORWARD."""
 
     def _request_ollama(self, state: RobotState) -> Optional[Dict[str, Any]]:
         """Делает запрос к Ollama и возвращает JSON-ответ модели."""
@@ -153,8 +153,6 @@ Do not add markdown, comments, or extra keys.
             ],
         }
         body = json.dumps(request_payload).encode("utf-8")
-        if self.config.log_llm_verbose:
-            LOGGER.info("Brain LLM request:\n%s", _json_line(request_payload))
         req = urllib.request.Request(url=url, data=body, headers={"Content-Type": "application/json"}, method="POST")
         try:
             with urllib.request.urlopen(req, timeout=self.config.ollama_timeout_s) as response:
@@ -261,7 +259,7 @@ def parse_args() -> BrainConfig:
     parser.add_argument("--ollama-timeout-s", type=float, default=BrainConfig.ollama_timeout_s, help="Timeout for Ollama requests in seconds")
     parser.add_argument("--llm-temperature", type=float, default=BrainConfig.llm_temperature, help="Sampling temperature for LLM")
     parser.add_argument("--llm-num-predict", type=int, default=BrainConfig.llm_num_predict, help="Max tokens predicted by LLM")
-    parser.add_argument("--verbose", action="store_true", help="Логировать запрос и сырой ответ LLM")
+    parser.add_argument("--verbose", action="store_true", help="Логировать сырой ответ LLM")
     args = parser.parse_args()
     return BrainConfig(
         state_path=Path(args.state_path),

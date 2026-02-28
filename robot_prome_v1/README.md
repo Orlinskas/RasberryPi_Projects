@@ -62,7 +62,7 @@ flowchart LR
 
 - `state_id`
 - `sensor.obstacle_cm`
-- `camera.grid`
+- `camera.depth_map` — карта глубины 3×5 (NEAR/MID/FAR × left..right), символы: `_` пусто, `O` препятствие, `T` цель
 - `camera.description`
 - `camera.target_x`
 
