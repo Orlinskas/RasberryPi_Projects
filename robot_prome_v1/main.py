@@ -14,7 +14,7 @@ import threading
 import time
 from pathlib import Path
 from brain import BrainConfig, run_brain_loop
-from controller import run_controller_loop
+from controller import interactive_main, run_controller_loop
 from memory import MemoryConfig, run_memory_loop
 from settings import (
     CONTROLLER_POLL_INTERVAL_S,
@@ -53,8 +53,8 @@ def monitor_health(
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Robot main orchestrator")
-    parser.add_argument("--mode", choices=["run", "dry"], default="run",
-        help="run: motors enabled, dry: motors disabled")
+    parser.add_argument("--mode", choices=["run", "dry", "manual"], default="run",
+        help="run: motors enabled, dry: motors disabled, manual: interactive keyboard control, brain off")
     parser.add_argument("--verbose", action="store_true", help="Log raw LLM responses")
     return parser.parse_args()
 
@@ -64,6 +64,8 @@ def main() -> None:
     args = parse_args()
     if args.mode == "dry":
         LOGGER.info("DRY mode: motors disabled")
+    if args.mode == "manual":
+        LOGGER.info("MANUAL mode: keyboard control, brain disabled")
 
     protocol_dir = Path(__file__).with_name("protocol")
     protocol_dir.mkdir(parents=True, exist_ok=True)
@@ -102,22 +104,10 @@ def main() -> None:
             daemon=True
         ),
         threading.Thread(
-            target=run_brain_loop,
-            args=(brain_config, stop_event),
-            name="brain",
-            daemon=True
-        ),
-        threading.Thread(
             target=run_memory_loop,
             args=(memory_config, stop_event),
             name="memory",
-            daemon=True)
-        ,
-        threading.Thread(
-            target=run_controller_loop,
-            args=(command_path, CONTROLLER_POLL_INTERVAL_S, stop_event, args.mode == "run"),
-            name="controller",
-            daemon=True,
+            daemon=True
         ),
         threading.Thread(
             target=monitor_health,
@@ -127,17 +117,36 @@ def main() -> None:
         ),
     ]
 
+    if args.mode != "manual":
+        threads.extend([
+            threading.Thread(
+                target=run_brain_loop,
+                args=(brain_config, stop_event),
+                name="brain",
+                daemon=True
+            ),
+            threading.Thread(
+                target=run_controller_loop,
+                args=(command_path, CONTROLLER_POLL_INTERVAL_S, stop_event, args.mode == "run"),
+                name="controller",
+                daemon=True,
+            ),
+        ])
+
     for thread in threads:
         thread.start()
         LOGGER.info("Started thread: %s", thread.name)
 
     try:
-        while True:
-            dead = [thread.name for thread in threads if not thread.is_alive()]
-            if dead:
-                LOGGER.error("Critical modules dead: %s. Shutting down.", ", ".join(dead))
-                break
-            time.sleep(0.5)
+        if args.mode == "manual":
+            interactive_main()
+        else:
+            while True:
+                dead = [thread.name for thread in threads if not thread.is_alive()]
+                if dead:
+                    LOGGER.error("Critical modules dead: %s. Shutting down.", ", ".join(dead))
+                    break
+                time.sleep(0.5)
     except KeyboardInterrupt:
         LOGGER.info("Stopped by user")
     finally:

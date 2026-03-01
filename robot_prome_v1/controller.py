@@ -64,6 +64,7 @@ except ImportError:
 
 from settings import (
     ACTION_DURATION_MS,
+    ACTIONS,
     ACTION_SPEED,
     COMMAND_PATH,
     CONTROLLER_ENA,
@@ -90,6 +91,20 @@ pwm_ena = None
 pwm_enb = None
 LOGGER = logging.getLogger("controller")
 _ACTION_UNTIL_TS = 0.0
+
+# Key -> ACTIONS mapping for interactive mode (exact 1:1 with settings.ACTIONS)
+INTERACTIVE_KEY_TO_ACTION = {
+    "W": "STEP_FORWARD",
+    "S": "STEP_BACKWARD",
+    "A": "TURN_LEFT_15",
+    "Z": "TURN_LEFT_45",
+    "D": "TURN_RIGHT_15",
+    "X": "TURN_RIGHT_45",
+    "L": "LIGHT_ON",
+    "O": "LIGHT_OFF",
+    "E": "ERROR",
+    "P": "PLAY",
+}
 
 
 def setup():
@@ -324,52 +339,69 @@ def run_controller_loop(
         LOGGER.info("Controller stopped")
 
 
+_interactive_command_counter = 0
+
+
+def _duration_stop_thread(stop_event: threading.Event) -> None:
+    """Background thread: stop motors when ACTION duration expires."""
+    global _ACTION_UNTIL_TS
+    while not stop_event.is_set():
+        if 0 < _ACTION_UNTIL_TS <= time.time():
+            stop()
+            _ACTION_UNTIL_TS = 0.0
+        stop_event.wait(CONTROLLER_POLL_INTERVAL_S)
+
+
 def interactive_main():
+    global _ACTION_UNTIL_TS, _interactive_command_counter
     setup()
-    print("Controller started.")
-    print("W fwd S back A left D right C stop L/O light E error P play Q quit")
+    stop_event = threading.Event()
+    duration_thread = threading.Thread(
+        target=_duration_stop_thread,
+        args=(stop_event,),
+        name="interactive-duration",
+        daemon=True,
+    )
+    duration_thread.start()
+
+    print("Controller started (interactive, keys map to ACTIONS).")
+    print("W STEP_FORWARD | S STEP_BACKWARD")
+    print("A TURN_LEFT_15 | Z TURN_LEFT_45 | D TURN_RIGHT_15 | X TURN_RIGHT_45")
+    print("L LIGHT_ON | O LIGHT_OFF | E ERROR | P PLAY | C stop | Q quit")
 
     try:
         while True:
-            command = input("Enter command: ").strip().upper()
+            raw = input("Key: ").strip().upper()
+            if not raw:
+                continue
+            key = raw[0]
 
-            if command == "W":
-                forward()
-                print("Fwd")
-            elif command == "S":
-                backward()
-                print("Back")
-            elif command == "A":
-                turn_left()
-                print("Left")
-            elif command == "D":
-                turn_right()
-                print("Right")
-            elif command in ("C", "С"):
+            if key == "Q":
+                break
+            if key in ("C", "С"):  # C + Cyrillic С
                 stop()
                 print("Stop")
-            elif command == "L":
-                light_on()
-                print("Light on")
-            elif command == "O":
-                light_off()
-                print("Light off")
-            elif command == "E":
-                stop()
-                error_blink()
-                light_off()
-                print("Error")
-            elif command == "P":
-                stop()
-                play()
-                print("Play")
-            elif command == "Q":
-                break
-            else:
-                print("Unknown, use W/S/A/D/C/L/O/E/P/Q")
+                continue
+
+            action = INTERACTIVE_KEY_TO_ACTION.get(key)
+            if action is None:
+                print(f"Unknown. Keys: {', '.join(sorted(INTERACTIVE_KEY_TO_ACTION))} | C stop | Q quit")
+                continue
+
+            _interactive_command_counter += 1
+            cmd = RobotCommand(
+                command_id=f"int_{_interactive_command_counter:06d}",
+                based_on_state_id="interactive",
+                action=action,
+                reason="manual",
+            )
+            execute_command(cmd)
+            print(action)
     except KeyboardInterrupt:
         pass
     finally:
+        stop_event.set()
+        duration_thread.join(timeout=1.0)
         cleanup()
         print("Controller stopped.")
 
