@@ -362,7 +362,8 @@ def interactive_main():
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Robot controller module")
-    parser.add_argument("--mode", choices=["interactive", "loop"], default="interactive")
+    parser.add_argument("--mode", choices=["interactive", "loop"], default="interactive",
+        help="interactive: keyboard control, loop: read command.json")
     return parser.parse_args()
 
 

@@ -8,7 +8,6 @@
 
 from __future__ import annotations
 
-import argparse
 import logging
 import threading
 from dataclasses import dataclass
@@ -117,18 +116,7 @@ def get_recent_actions(memory_path: Path, limit: int = 8) -> List[Dict[str, Any]
 
 
 def parse_args() -> MemoryConfig:
-    parser = argparse.ArgumentParser(description="Memory module")
-    parser.add_argument("--state-path", default=str(MemoryConfig.state_path), help="Path to protocol/state.json")
-    parser.add_argument("--command-path", default=str(MemoryConfig.command_path), help="Path to protocol/command.json")
-    parser.add_argument("--memory-path", default=str(MemoryConfig.memory_path), help="Path to protocol/memory.json")
-    parser.add_argument("--max-entries", type=int, default=MEMORY_MAX_ENTRIES, help="Max action_history entries")
-    args = parser.parse_args()
-    return MemoryConfig(
-        state_path=Path(args.state_path),
-        command_path=Path(args.command_path),
-        memory_path=Path(args.memory_path),
-        max_entries=max(1, int(args.max_entries)),
-    )
+    return MemoryConfig()
 
 
 def main() -> None:

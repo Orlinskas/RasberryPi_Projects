@@ -8,7 +8,6 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 import logging
 import os
@@ -518,18 +517,7 @@ def run_vision_loop(config: VisionConfig, stop_event: Optional[threading.Event] 
 
 
 def parse_args() -> VisionConfig:
-    parser = argparse.ArgumentParser(description="Vision module (capture + ultrasonic, no LLM)")
-    parser.add_argument("--capture-keep-last", type=int, default=VisionConfig.capture_keep_last, help="Сколько последних снимков хранить")
-    parser.add_argument("--stream-port", type=int, default=STREAM_DEFAULT_PORT, help="Порт для видеопотока в браузере")
-    parser.add_argument("--no-stream", action="store_true", help="Отключить видеопоток в браузере")
-    parser.add_argument("--command-path", default=str(COMMAND_PATH), help="Path to protocol/command.json")
-    args = parser.parse_args()
-    return VisionConfig(
-        capture_keep_last=max(1, int(args.capture_keep_last)),
-        stream_port=max(1024, int(args.stream_port)),
-        stream_enabled=not args.no_stream,
-        command_path=Path(args.command_path),
-    )
+    return VisionConfig()
 
 
 def main() -> None:

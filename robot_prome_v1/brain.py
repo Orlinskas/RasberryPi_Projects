@@ -268,27 +268,9 @@ def run_brain_loop(config: BrainConfig, stop_event: Optional[threading.Event] = 
 
 def parse_args() -> BrainConfig:
     parser = argparse.ArgumentParser(description="Brain module")
-    parser.add_argument("--state-path", default=str(BrainConfig.state_path), help="Path to protocol/state.json")
-    parser.add_argument("--command-path", default=str(BrainConfig.command_path), help="Path to protocol/command.json")
-    parser.add_argument("--memory-path", default=str(BrainConfig.memory_path), help="Path to protocol/memory.json")
-    parser.add_argument("--ollama-base-url", default=BrainConfig.ollama_base_url, help="Ollama URL, e.g. http://192.168.1.100:11434")
-    parser.add_argument("--ollama-model", default=BrainConfig.ollama_model, help="Ollama model tag for brain")
-    parser.add_argument("--ollama-timeout-s", type=float, default=BrainConfig.ollama_timeout_s, help="Timeout for Ollama requests in seconds")
-    parser.add_argument("--llm-temperature", type=float, default=BrainConfig.llm_temperature, help="Sampling temperature for LLM")
-    parser.add_argument("--llm-num-predict", type=int, default=BrainConfig.llm_num_predict, help="Max tokens predicted by LLM")
-    parser.add_argument("--verbose", action="store_true", help="Логировать сырой ответ LLM")
+    parser.add_argument("--verbose", action="store_true", help="Log raw LLM responses")
     args = parser.parse_args()
-    return BrainConfig(
-        state_path=Path(args.state_path),
-        command_path=Path(args.command_path),
-        memory_path=Path(args.memory_path),
-        ollama_base_url=str(args.ollama_base_url),
-        ollama_model=str(args.ollama_model),
-        ollama_timeout_s=max(0.1, float(args.ollama_timeout_s)),
-        llm_temperature=max(0.0, float(args.llm_temperature)),
-        llm_num_predict=max(1, int(args.llm_num_predict)),
-        log_llm_verbose=args.verbose,
-    )
+    return BrainConfig(log_llm_verbose=args.verbose)
 
 
 def main() -> None:

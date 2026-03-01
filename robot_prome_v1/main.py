@@ -51,15 +51,9 @@ def monitor_health(
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Robot main orchestrator")
-    parser.add_argument(
-        "--mode",
-        choices=["run", "dry"],
-        default="run",
-        help="run: обычный режим, dry: без управления моторами",
-    )
-    parser.add_argument("--stream-port", type=int, default=STREAM_DEFAULT_PORT, help="Порт видеопотока камеры (браузер)")
-    parser.add_argument("--no-stream", action="store_true", help="Отключить видеопоток камеры в браузере")
-    parser.add_argument("--verbose", action="store_true", help="Логировать сырые ответы нейросети (vision + brain)")
+    parser.add_argument("--mode", choices=["run", "dry"], default="run",
+        help="run: motors enabled, dry: motors disabled")
+    parser.add_argument("--verbose", action="store_true", help="Log raw LLM responses")
     return parser.parse_args()
 
 
@@ -81,8 +75,8 @@ def main() -> None:
 
     stop_event = threading.Event()
     vision_config = VisionConfig(
-        stream_port=args.stream_port,
-        stream_enabled=not args.no_stream,
+        stream_port=STREAM_DEFAULT_PORT,
+        stream_enabled=True,
         command_path=command_path,
     )
     brain_config = BrainConfig(
