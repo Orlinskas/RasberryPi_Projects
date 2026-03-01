@@ -24,9 +24,10 @@ ACTIONS = [
     "TURN_LEFT_45",
     "TURN_RIGHT_15",
     "TURN_RIGHT_45",
-    "STOP",
     "LIGHT_ON",
     "LIGHT_OFF",
+    "ERROR",
+    "PLAY",
 ]
 
 # Параметры движений (все заранее заданы; command.json не содержит params)
@@ -34,22 +35,26 @@ ACTION_DURATION_MS = {
     "STEP_FORWARD": 1000,
     "STEP_BACKWARD": 500,
     "TURN_LEFT_15": 200,
-    "TURN_LEFT_45": 400,
+    "TURN_LEFT_45": 600,
     "TURN_RIGHT_15": 200,
-    "TURN_RIGHT_45": 400,
+    "TURN_RIGHT_45": 600,
+    "ERROR": 1000,  # время на 3 красных мигания (~0.9 с)
+    "PLAY": 3500,   # качание влево-вправо + разноцветное мигание
 }
+
 ACTION_SPEED = {
     "STEP_FORWARD": 20,
     "STEP_BACKWARD": 40,
-    "TURN_LEFT_15": 50,
-    "TURN_LEFT_45": 50,
-    "TURN_RIGHT_15": 50,
-    "TURN_RIGHT_45": 50,
+    "TURN_LEFT_15": 25,
+    "TURN_LEFT_45": 25,
+    "TURN_RIGHT_15": 25,
+    "TURN_RIGHT_45": 25,
+    "PLAY": 60,  # скорость поворотов при качании
 }
 
 
 def get_effective_duration_ms(action: str) -> int:
-    """Возвращает duration_ms для действия (0 для STOP, LIGHT_*)."""
+    """Возвращает duration_ms для действия (0 для LIGHT_* и неизвестных)."""
     return ACTION_DURATION_MS.get(action, 0)
 
 
@@ -84,11 +89,11 @@ def zero_state_payload() -> Dict[str, Any]:
     }
 
 def zero_command_payload() -> Dict[str, Any]:
-    """Возвращает нулевую команду STOP."""
+    """Возвращает нулевую команду (без движения)."""
     return {
         "command_id": "cmd_000000",
         "based_on_state_id": "st_000000",
-        "action": "STOP",
+        "action": "LIGHT_OFF",
         "reason": "initial_state",
     }
 
@@ -201,8 +206,8 @@ class RobotCommand:
 
     command_id: str = ""
     based_on_state_id: str = ""
-    action: str = "STOP"
-    reason: str = "default_stop"
+    action: str = "LIGHT_OFF"
+    reason: str = "default"
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -214,9 +219,9 @@ class RobotCommand:
 
     @classmethod
     def from_dict(cls, payload: Dict[str, Any]) -> "RobotCommand":
-        action = str(payload.get("action", "STOP")).upper()
+        action = str(payload.get("action", "LIGHT_OFF")).upper()
         if action not in ACTIONS:
-            action = "STOP"
+            action = "LIGHT_OFF"
         return cls(
             command_id=str(payload.get("command_id", "")),
             based_on_state_id=str(payload.get("based_on_state_id", "")),

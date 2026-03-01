@@ -50,7 +50,7 @@ class BrainConfig:
     ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://192.168.0.18:11434")
     ollama_model: str = os.getenv("OLLAMA_BRAIN_MODEL", "qwen3.5:397b-cloud")
     ollama_timeout_s: float = float(os.getenv("OLLAMA_TIMEOUT_S", "100"))
-    llm_temperature: float = 0.2
+    llm_temperature: float = 0.1
     llm_num_predict: int = 512
     llm_keep_alive: str = os.getenv("OLLAMA_KEEP_ALIVE", "60m")
     log_llm_verbose: bool = False
@@ -106,7 +106,7 @@ class BrainEngine:
 
 You receive:
 1. An image from the robot's front camera (what the robot sees ahead)
-2. sensor.obstacle_cm — distance to the nearest obstacle in front, in cm (null if unavailable). Safe distance: >= 50 cm. Below 50 cm — be cautious (turn away, back up, or stop).
+2. sensor.obstacle_cm — distance to the nearest obstacle in front, in cm (null if unavailable). Safe distance: >= 50 cm. Below 50 cm — be cautious (turn away or back up).
 3. recent_actions — list of your last actions (state_id, action, reason, obstacle_cm). Use this to avoid repetitive loops.
 
 Output ONLY a JSON object with keys: action, reason. Allowed action values: {allowed_actions}
@@ -123,14 +123,14 @@ Do not add markdown, comments, or extra keys.
 - TURN_LEFT_45, TURN_RIGHT_45 — larger turn (~45°)
 
 **Other:**
-- STOP — stop and wait
 - LIGHT_ON — turn light on
 - LIGHT_OFF — turn light off
+- PLAY — celebrate: use when toy is found and close, or to express joy
 
 ## Rules
 
 1. **Safety and navigation:**
-   - Combine the image and sensor.obstacle_cm to assess the situation. Obstacles in the image (wall, furniture, chair, legs, person) and low distance readings both suggest caution — turn away, back up, or stop as you see fit.
+   - Combine the image and sensor.obstacle_cm to assess the situation. Obstacles in the image (wall, furniture, chair, legs, person) and low distance readings both suggest caution — turn away or back up.
    - Obstacle on left → consider TURN_RIGHT. Obstacle on right → consider TURN_LEFT. Obstacle center → TURN_LEFT or TURN_RIGHT.
 
 2. **Target seeking (when obstacle_cm >= 50 or null):**
@@ -139,10 +139,14 @@ Do not add markdown, comments, or extra keys.
    - Toy at center → STEP_FORWARD
    - Toy on right side → TURN_RIGHT_15 or TURN_RIGHT_45 (turn until it moves toward center)
    - No toy visible → slow search turn (TURN_LEFT_15 or TURN_RIGHT_15) to find it
+   - Toy found and close (obstacle_cm < 30 or toy fills center) → PLAY to celebrate
 
 3. **Light:** If the image looks dark (low lighting, poorly lit room, shadows) — use LIGHT_ON to illuminate the scene. You can also use LIGHT_ON to draw attention to nearby toys. Use LIGHT_OFF when there is enough light. Avoid getting stuck in light-only loops (alternating LIGHT_ON/LIGHT_OFF repeatedly without movement).
 
-4. **Use recent_actions:** You receive recent_actions (last actions taken). Use this history to avoid loops."""
+4. **Use recent_actions:** You receive recent_actions (last actions taken). Use this history to avoid loops.
+
+5. **Thinking** Keep reasoning short."""
+
 
     def _request_ollama(self, state: RobotState) -> Optional[Dict[str, Any]]:
         """Делает запрос к Ollama (vision model) и возвращает JSON-ответ."""
@@ -160,7 +164,7 @@ Do not add markdown, comments, or extra keys.
             images.append(image_b64)
             user_content = "Analyze this image and decide the robot action. Context: " + context
         else:
-            user_content = "No image available. Decide based on sensor only (prefer STOP if unsure). Context: " + context
+            user_content = "No image available. Decide based on sensor only. Context: " + context
 
         user_message: Dict[str, Any] = {"role": "user", "content": user_content}
         if images:
@@ -234,14 +238,14 @@ Do not add markdown, comments, or extra keys.
     def decide(self, state: Optional[RobotState]) -> RobotCommand:
         """Основная стратегия принятия решения для нового state."""
         if state is None:
-            return self._new_command("STOP", "unknown", "state_missing")
+            return self._new_command("ERROR", "unknown", "state_missing")
         llm_raw = self._request_ollama(state)
         if llm_raw is None:
-            return self._new_command("STOP", state.state_id, "llm_unavailable_fail_safe")
+            return self._new_command("ERROR", state.state_id, "llm_unavailable_fail_safe")
 
         normalized = self._normalize_llm_decision(llm_raw)
         if normalized is None:
-            return self._new_command("STOP", state.state_id, "llm_invalid_response_fail_safe")
+            return self._new_command("ERROR", state.state_id, "llm_invalid_response_fail_safe")
 
         action, reason = normalized
         return self._new_command(action, state.state_id, reason)

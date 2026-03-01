@@ -94,7 +94,7 @@ def run_memory_loop(config: MemoryConfig, stop_event: Optional[threading.Event] 
                     pass
 
         state_id = str(raw_command.get("based_on_state_id", ""))
-        action = str(raw_command.get("action", "STOP"))
+        action = str(raw_command.get("action", "LIGHT_OFF"))
         reason = str(raw_command.get("reason", ""))
 
         entry = {

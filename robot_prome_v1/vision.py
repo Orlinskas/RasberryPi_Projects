@@ -36,6 +36,8 @@ STATE_PATH = Path(__file__).with_name("protocol") / "state.json"
 CAPTURE_DIR = Path(__file__).with_name("captures")
 COMMAND_PATH = Path(__file__).with_name("protocol") / "command.json"
 VISION_POLL_WAIT_S = 0.1
+# Дополнительная задержка после ACTION_DURATION_MS (робот стабилизируется, меньше размытия)
+VISION_EXTRA_DELAY_S = 1.0
 
 ECHO_PIN = 0
 TRIG_PIN = 1
@@ -437,10 +439,10 @@ def _wait_for_command_duration(
         if command_id == last_processed_command_id:
             stop_event.wait(VISION_POLL_WAIT_S)
             continue
-        action = str(raw.get("action", "STOP"))
-        LOGGER.info("Vision: new command %s (%s), waiting %.2fs", command_id, action, get_effective_duration_ms(action) / 1000.0)
+        action = str(raw.get("action", "LIGHT_OFF"))
         duration_ms = get_effective_duration_ms(action)
-        duration_s = duration_ms / 1000.0
+        duration_s = duration_ms / 1000.0 + VISION_EXTRA_DELAY_S
+        LOGGER.info("Vision: new command %s (%s), waiting %.2fs", command_id, action, duration_s)
         deadline = time.monotonic() + duration_s
         while time.monotonic() < deadline and not stop_event.is_set():
             stop_event.wait(min(VISION_POLL_WAIT_S, max(0, deadline - time.monotonic())))

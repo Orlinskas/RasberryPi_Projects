@@ -68,7 +68,7 @@ flowchart LR
 
 - `command_id`
 - `based_on_state_id`
-- `action` (`STEP_FORWARD`, `STEP_BACKWARD`, `TURN_LEFT_15`, `TURN_LEFT_45`, `TURN_RIGHT_15`, `TURN_RIGHT_45`, `STOP`, `LIGHT_ON`, `LIGHT_OFF`)
+- `action` (`STEP_FORWARD`, `STEP_BACKWARD`, `TURN_LEFT_15`, `TURN_LEFT_45`, `TURN_RIGHT_15`, `TURN_RIGHT_45`, `LIGHT_ON`, `LIGHT_OFF`, `ERROR`, `PLAY`)
 - `reason`
 
 ## Поведение системы
@@ -193,7 +193,7 @@ ollama list
 ### 3) Проверка генерации ответа от локальной LLM
 
 ```bash
-ollama run qwen2.5:7b "Return JSON only: {\"action\":\"STOP\",\"reason\":\"healthcheck\"}"
+ollama run qwen2.5:7b "Return JSON only: {\"action\":\"LIGHT_OFF\",\"reason\":\"healthcheck\"}"
 ```
 
 ### 4) Проверка офлайн-режима
@@ -206,12 +206,12 @@ ollama run qwen2.5:7b "Return JSON only: {\"action\":\"STOP\",\"reason\":\"healt
 
 `brain.py` отправляет в Ollama изображение с камеры + данные датчиков (vision-модель) и ожидает строго JSON-решение:
 
-- `action`: `STEP_FORWARD | STEP_BACKWARD | TURN_LEFT_15 | TURN_LEFT_45 | TURN_RIGHT_15 | TURN_RIGHT_45 | STOP | LIGHT_ON | LIGHT_OFF`
+- `action`: `STEP_FORWARD | STEP_BACKWARD | TURN_LEFT_15 | TURN_LEFT_45 | TURN_RIGHT_15 | TURN_RIGHT_45 | LIGHT_ON | LIGHT_OFF | ERROR | PLAY`
 - `reason`: краткая причина
 
 Параметры движений (speed, duration_ms) заданы в `shared.ACTION_SPEED` и `shared.ACTION_DURATION_MS`.
 
-Если Ollama недоступен, вернул невалидный JSON или неверные поля, `brain.py` записывает fail-safe команду `STOP`.
+Если Ollama недоступен, вернул невалидный JSON или неверные поля, `brain.py` записывает fail-safe команду `ERROR` (три быстрых красных мигания LED).
 
 ### 6) Диагностика
 

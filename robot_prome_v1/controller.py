@@ -163,6 +163,52 @@ def light_off():
     GPIO.output(LED_B, GPIO.LOW)
 
 
+def error_blink():
+    """Три раза быстро мигает красным (индикация ошибки)."""
+    blink_on_s = 0.15
+    blink_off_s = 0.15
+    for _ in range(3):
+        GPIO.output(LED_R, GPIO.HIGH)
+        GPIO.output(LED_G, GPIO.LOW)
+        GPIO.output(LED_B, GPIO.LOW)
+        time.sleep(blink_on_s)
+        GPIO.output(LED_R, GPIO.LOW)
+        GPIO.output(LED_G, GPIO.LOW)
+        GPIO.output(LED_B, GPIO.LOW)
+        time.sleep(blink_off_s)
+
+
+# RGB цвета для PLAY (R, G, B) — как в ColorLED.py
+_PLAY_COLORS = [
+    (GPIO.HIGH, GPIO.LOW, GPIO.LOW),   # красный
+    (GPIO.LOW, GPIO.HIGH, GPIO.LOW),   # зелёный
+    (GPIO.LOW, GPIO.LOW, GPIO.HIGH),   # синий
+    (GPIO.HIGH, GPIO.HIGH, GPIO.LOW),  # жёлтый
+    (GPIO.HIGH, GPIO.LOW, GPIO.HIGH),  # magenta
+    (GPIO.LOW, GPIO.HIGH, GPIO.HIGH),  # cyan
+]
+
+
+def _set_led_color(r: int, g: int, b: int) -> None:
+    """Устанавливает цвет RGB LED."""
+    GPIO.output(LED_R, r)
+    GPIO.output(LED_G, g)
+    GPIO.output(LED_B, b)
+
+
+def play(phase_duration_s: float = 0.2, speed: int = 50, cycles: int = 6) -> None:
+    """Качание влево-вправо (TURN_LEFT_15/TURN_RIGHT_15) с разноцветным миганием LED."""
+    for i in range(cycles):
+        if i % 2 == 0:
+            turn_left(speed=speed)
+        else:
+            turn_right(speed=speed)
+        _set_led_color(*_PLAY_COLORS[i % len(_PLAY_COLORS)])
+        time.sleep(phase_duration_s)
+    stop()
+    light_off()
+
+
 def cleanup():
     """Безопасная деинициализация GPIO."""
     global pwm_ena, pwm_enb
@@ -200,6 +246,16 @@ def execute_command(command: RobotCommand) -> None:
         light_on()
     elif action == "LIGHT_OFF":
         light_off()
+    elif action == "ERROR":
+        stop()
+        error_blink()
+        light_off()
+    elif action == "PLAY":
+        play(
+            phase_duration_s=0.2,
+            speed=speed,
+            cycles=6,
+        )
     else:
         stop()
 
@@ -278,7 +334,7 @@ def interactive_main():
     """Ручной режим для отладки по клавишам."""
     setup()
     print("Controller started.")
-    print("Commands: W - forward, S - backward, A - left, D - right, C - stop, L - light on, O - light off, Q - quit")
+    print("Commands: W - forward, S - backward, A - left, D - right, C - stop, L - light on, O - light off, E - error blink, P - play, Q - quit")
 
     try:
         while True:
@@ -305,10 +361,19 @@ def interactive_main():
             elif command == "O":
                 light_off()
                 print("Light off")
+            elif command == "E":
+                stop()
+                error_blink()
+                light_off()
+                print("Error blink")
+            elif command == "P":
+                stop()
+                play()
+                print("Play")
             elif command == "Q":
                 break
             else:
-                print("Unknown command. Use W/S/A/D/C/L/O/Q")
+                print("Unknown command. Use W/S/A/D/C/L/O/E/P/Q")
     except KeyboardInterrupt:
         pass
     finally:
