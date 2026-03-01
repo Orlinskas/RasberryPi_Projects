@@ -62,17 +62,29 @@ except ImportError:
 
     GPIO = _MockGPIO()
 
-from shared import (
+from settings import (
     ACTION_DURATION_MS,
     ACTION_SPEED,
+    COMMAND_PATH,
+    CONTROLLER_ENA,
+    CONTROLLER_ENB,
+    CONTROLLER_IN1,
+    CONTROLLER_IN2,
+    CONTROLLER_IN3,
+    CONTROLLER_IN4,
+    CONTROLLER_LED_B,
+    CONTROLLER_LED_G,
+    CONTROLLER_LED_R,
+    CONTROLLER_POLL_INTERVAL_S,
+    ERROR_BLINK_OFF_S,
+    ERROR_BLINK_ON_S,
     GPIO_LOCK,
+    PLAY_CYCLES,
+    PLAY_PHASE_DURATION_S,
+    PLAY_SPEED,
     RobotCommand,
     read_json,
 )
-
-IN1, IN2, IN3, IN4 = 20, 21, 19, 26
-ENA, ENB = 16, 13
-LED_R, LED_G, LED_B = 22, 27, 24
 
 pwm_ena = None
 pwm_enb = None
@@ -86,63 +98,63 @@ def setup():
         GPIO.setmode(GPIO.BCM)
         GPIO.setwarnings(False)
 
-        GPIO.setup(ENA, GPIO.OUT, initial=GPIO.HIGH)
-        GPIO.setup(ENB, GPIO.OUT, initial=GPIO.HIGH)
-        GPIO.setup(IN1, GPIO.OUT, initial=GPIO.LOW)
-        GPIO.setup(IN2, GPIO.OUT, initial=GPIO.LOW)
-        GPIO.setup(IN3, GPIO.OUT, initial=GPIO.LOW)
-        GPIO.setup(IN4, GPIO.OUT, initial=GPIO.LOW)
-        GPIO.setup(LED_R, GPIO.OUT, initial=GPIO.LOW)
-        GPIO.setup(LED_G, GPIO.OUT, initial=GPIO.LOW)
-        GPIO.setup(LED_B, GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(CONTROLLER_ENA, GPIO.OUT, initial=GPIO.HIGH)
+        GPIO.setup(CONTROLLER_ENB, GPIO.OUT, initial=GPIO.HIGH)
+        GPIO.setup(CONTROLLER_IN1, GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(CONTROLLER_IN2, GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(CONTROLLER_IN3, GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(CONTROLLER_IN4, GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(CONTROLLER_LED_R, GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(CONTROLLER_LED_G, GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(CONTROLLER_LED_B, GPIO.OUT, initial=GPIO.LOW)
 
-        pwm_ena = GPIO.PWM(ENA, 2000)
-        pwm_enb = GPIO.PWM(ENB, 2000)
+        pwm_ena = GPIO.PWM(CONTROLLER_ENA, 2000)
+        pwm_enb = GPIO.PWM(CONTROLLER_ENB, 2000)
         pwm_ena.start(0)
         pwm_enb.start(0)
 
 
 def forward(speed: int = 30):
-    GPIO.output(IN1, GPIO.HIGH)
-    GPIO.output(IN2, GPIO.LOW)
-    GPIO.output(IN3, GPIO.HIGH)
-    GPIO.output(IN4, GPIO.LOW)
+    GPIO.output(CONTROLLER_IN1, GPIO.HIGH)
+    GPIO.output(CONTROLLER_IN2, GPIO.LOW)
+    GPIO.output(CONTROLLER_IN3, GPIO.HIGH)
+    GPIO.output(CONTROLLER_IN4, GPIO.LOW)
     pwm_ena.ChangeDutyCycle(speed)
     pwm_enb.ChangeDutyCycle(speed)
 
 
 def backward(speed: int = 30):
-    GPIO.output(IN1, GPIO.LOW)
-    GPIO.output(IN2, GPIO.HIGH)
-    GPIO.output(IN3, GPIO.LOW)
-    GPIO.output(IN4, GPIO.HIGH)
+    GPIO.output(CONTROLLER_IN1, GPIO.LOW)
+    GPIO.output(CONTROLLER_IN2, GPIO.HIGH)
+    GPIO.output(CONTROLLER_IN3, GPIO.LOW)
+    GPIO.output(CONTROLLER_IN4, GPIO.HIGH)
     pwm_ena.ChangeDutyCycle(speed)
     pwm_enb.ChangeDutyCycle(speed)
 
 
 def turn_left(speed: int = 30):
-    GPIO.output(IN1, GPIO.LOW)
-    GPIO.output(IN2, GPIO.HIGH)
-    GPIO.output(IN3, GPIO.HIGH)
-    GPIO.output(IN4, GPIO.LOW)
+    GPIO.output(CONTROLLER_IN1, GPIO.LOW)
+    GPIO.output(CONTROLLER_IN2, GPIO.HIGH)
+    GPIO.output(CONTROLLER_IN3, GPIO.HIGH)
+    GPIO.output(CONTROLLER_IN4, GPIO.LOW)
     pwm_ena.ChangeDutyCycle(speed)
     pwm_enb.ChangeDutyCycle(speed)
 
 
 def turn_right(speed: int = 30):
-    GPIO.output(IN1, GPIO.HIGH)
-    GPIO.output(IN2, GPIO.LOW)
-    GPIO.output(IN3, GPIO.LOW)
-    GPIO.output(IN4, GPIO.HIGH)
+    GPIO.output(CONTROLLER_IN1, GPIO.HIGH)
+    GPIO.output(CONTROLLER_IN2, GPIO.LOW)
+    GPIO.output(CONTROLLER_IN3, GPIO.LOW)
+    GPIO.output(CONTROLLER_IN4, GPIO.HIGH)
     pwm_ena.ChangeDutyCycle(speed)
     pwm_enb.ChangeDutyCycle(speed)
 
 
 def stop():
-    GPIO.output(IN1, GPIO.LOW)
-    GPIO.output(IN2, GPIO.LOW)
-    GPIO.output(IN3, GPIO.LOW)
-    GPIO.output(IN4, GPIO.LOW)
+    GPIO.output(CONTROLLER_IN1, GPIO.LOW)
+    GPIO.output(CONTROLLER_IN2, GPIO.LOW)
+    GPIO.output(CONTROLLER_IN3, GPIO.LOW)
+    GPIO.output(CONTROLLER_IN4, GPIO.LOW)
     if pwm_ena is not None:
         pwm_ena.ChangeDutyCycle(0)
     if pwm_enb is not None:
@@ -150,29 +162,27 @@ def stop():
 
 
 def light_on():
-    GPIO.output(LED_R, GPIO.HIGH)
-    GPIO.output(LED_G, GPIO.HIGH)
-    GPIO.output(LED_B, GPIO.HIGH)
+    GPIO.output(CONTROLLER_LED_R, GPIO.HIGH)
+    GPIO.output(CONTROLLER_LED_G, GPIO.HIGH)
+    GPIO.output(CONTROLLER_LED_B, GPIO.HIGH)
 
 
 def light_off():
-    GPIO.output(LED_R, GPIO.LOW)
-    GPIO.output(LED_G, GPIO.LOW)
-    GPIO.output(LED_B, GPIO.LOW)
+    GPIO.output(CONTROLLER_LED_R, GPIO.LOW)
+    GPIO.output(CONTROLLER_LED_G, GPIO.LOW)
+    GPIO.output(CONTROLLER_LED_B, GPIO.LOW)
 
 
 def error_blink():
-    blink_on_s = 0.15
-    blink_off_s = 0.15
     for _ in range(3):
-        GPIO.output(LED_R, GPIO.HIGH)
-        GPIO.output(LED_G, GPIO.LOW)
-        GPIO.output(LED_B, GPIO.LOW)
-        time.sleep(blink_on_s)
-        GPIO.output(LED_R, GPIO.LOW)
-        GPIO.output(LED_G, GPIO.LOW)
-        GPIO.output(LED_B, GPIO.LOW)
-        time.sleep(blink_off_s)
+        GPIO.output(CONTROLLER_LED_R, GPIO.HIGH)
+        GPIO.output(CONTROLLER_LED_G, GPIO.LOW)
+        GPIO.output(CONTROLLER_LED_B, GPIO.LOW)
+        time.sleep(ERROR_BLINK_ON_S)
+        GPIO.output(CONTROLLER_LED_R, GPIO.LOW)
+        GPIO.output(CONTROLLER_LED_G, GPIO.LOW)
+        GPIO.output(CONTROLLER_LED_B, GPIO.LOW)
+        time.sleep(ERROR_BLINK_OFF_S)
 
 
 _PLAY_COLORS = [
@@ -186,12 +196,16 @@ _PLAY_COLORS = [
 
 
 def _set_led_color(r: int, g: int, b: int) -> None:
-    GPIO.output(LED_R, r)
-    GPIO.output(LED_G, g)
-    GPIO.output(LED_B, b)
+    GPIO.output(CONTROLLER_LED_R, r)
+    GPIO.output(CONTROLLER_LED_G, g)
+    GPIO.output(CONTROLLER_LED_B, b)
 
 
-def play(phase_duration_s: float = 0.2, speed: int = 50, cycles: int = 6) -> None:
+def play(
+    phase_duration_s: float = PLAY_PHASE_DURATION_S,
+    speed: int = PLAY_SPEED,
+    cycles: int = PLAY_CYCLES,
+) -> None:
     for i in range(cycles):
         if i % 2 == 0:
             turn_left(speed=speed)
@@ -242,9 +256,9 @@ def execute_command(command: RobotCommand) -> None:
         light_off()
     elif action == "PLAY":
         play(
-            phase_duration_s=0.2,
+            phase_duration_s=PLAY_PHASE_DURATION_S,
             speed=speed,
-            cycles=6,
+            cycles=PLAY_CYCLES,
         )
     else:
         stop()
@@ -267,8 +281,8 @@ def execute_command_dry_run(command: RobotCommand) -> None:
         command.command_id, action, command.reason)
 
 def run_controller_loop(
-    command_path: Union[Path, str] = Path(__file__).with_name("protocol") / "command.json",
-    poll_interval_s: float = 0.05,
+    command_path: Union[Path, str] = COMMAND_PATH,
+    poll_interval_s: float = CONTROLLER_POLL_INTERVAL_S,
     stop_event: Optional[threading.Event] = None,
     enable_motors: bool = True,
 ) -> None:

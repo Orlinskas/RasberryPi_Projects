@@ -17,14 +17,17 @@ from pathlib import Path
 from brain import BrainConfig, run_brain_loop
 from controller import run_controller_loop
 from memory import MemoryConfig, run_memory_loop
-from shared import (
+from settings import (
+    CONTROLLER_POLL_INTERVAL_S,
+    STREAM_DEFAULT_PORT,
+    VisionConfig,
     atomic_write_json,
     read_json,
     zero_command_payload,
     zero_memory_payload,
     zero_state_payload,
 )
-from vision import STREAM_DEFAULT_PORT, VisionConfig, run_vision_loop
+from vision import run_vision_loop
 
 LOGGER = logging.getLogger("main")
 
@@ -75,9 +78,10 @@ def main() -> None:
 
     stop_event = threading.Event()
     vision_config = VisionConfig(
+        state_path=state_path,
+        command_path=command_path,
         stream_port=STREAM_DEFAULT_PORT,
         stream_enabled=True,
-        command_path=command_path,
     )
     brain_config = BrainConfig(
         state_path=state_path,
@@ -92,12 +96,27 @@ def main() -> None:
     )
 
     threads = [
-        threading.Thread(target=run_vision_loop, args=(vision_config, stop_event), name="vision", daemon=True),
-        threading.Thread(target=run_brain_loop, args=(brain_config, stop_event), name="brain", daemon=True),
-        threading.Thread(target=run_memory_loop, args=(memory_config, stop_event), name="memory", daemon=True),
+        threading.Thread(
+            target=run_vision_loop,
+            args=(vision_config, stop_event),
+            name="vision",
+            daemon=True
+        ),
+        threading.Thread(
+            target=run_brain_loop,
+            args=(brain_config, stop_event),
+            name="brain",
+            daemon=True
+        ),
+        threading.Thread(
+            target=run_memory_loop,
+            args=(memory_config, stop_event),
+            name="memory",
+            daemon=True)
+        ,
         threading.Thread(
             target=run_controller_loop,
-            args=(command_path, 0.05, stop_event, args.mode == "run"),
+            args=(command_path, CONTROLLER_POLL_INTERVAL_S, stop_event, args.mode == "run"),
             name="controller",
             daemon=True,
         ),

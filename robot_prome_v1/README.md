@@ -15,7 +15,7 @@
 - `brain.py` — читает `state.json`, отправляет изображение + текст в vision-модель (Ollama), принимает решение, пишет `command.json`
 - `controller.py` — исполняет команду из `command.json` на моторах
 - `main.py` — поднимает все потоки и корректно завершает систему
-- `shared.py` — общие модели (`RobotState`, `RobotCommand`) и безопасный JSON I/O
+- `settings.py` — настройки, константы, промпты, модели (`RobotState`, `RobotCommand`) и безопасный JSON I/O
 
 ## Схема взаимодействия
 
@@ -84,7 +84,7 @@ flowchart LR
 - `brain` не имеет собственного интервала генерации команд:
   - обрабатывает только новый `state_id`
   - если `state_id` не изменился, просто ждет
-- `controller` исполняет действие и держит его заданную длительность (из `shared.ACTION_DURATION_MS`)
+- `controller` исполняет действие и держит его заданную длительность (из `settings.ACTION_DURATION_MS`)
 - при завершении `main` сбрасывает `state.json` и `command.json` в нулевое состояние
 
 ## Логи
@@ -216,7 +216,7 @@ ollama run qwen2.5:7b "Return JSON only: {\"action\":\"LIGHT_OFF\",\"reason\":\"
 - `action`: `STEP_FORWARD | STEP_BACKWARD | TURN_LEFT_15 | TURN_LEFT_45 | TURN_RIGHT_15 | TURN_RIGHT_45 | LIGHT_ON | LIGHT_OFF | ERROR | PLAY`
 - `reason`: краткая причина
 
-Параметры движений (speed, duration_ms) заданы в `shared.ACTION_SPEED` и `shared.ACTION_DURATION_MS`.
+Параметры движений (speed, duration_ms) заданы в `settings.ACTION_SPEED` и `settings.ACTION_DURATION_MS`.
 
 Если Ollama недоступен, вернул невалидный JSON или неверные поля, `brain.py` записывает fail-safe команду `ERROR` (три быстрых красных мигания LED).
 

@@ -18,44 +18,41 @@ import time
 import urllib.error
 import urllib.request
 from collections import deque
-from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 from pathlib import Path
 from typing import Any, Deque, Optional, Protocol, Tuple
 
-from shared import (
+from settings import (
+    CAMERA_FPS,
+    CAMERA_HEIGHT,
+    CAMERA_INDEX,
+    CAMERA_WARMUP_S,
+    CAMERA_WIDTH,
+    CAPTURE_DIR,
+    CAPTURE_KEEP_LAST,
+    ECHO_PIN,
     GPIO_LOCK,
+    STREAM_DEFAULT_PORT,
+    TRIG_PIN,
+    ULTRASONIC_INTER_MEASURE_DELAY_S,
+    ULTRASONIC_MAX_CM,
+    ULTRASONIC_MIN_CM,
+    ULTRASONIC_OUTLIER_RATIO,
+    ULTRASONIC_SAMPLES_PER_READ,
+    ULTRASONIC_TIMEOUT_S,
+    VISION_EXTRA_DELAY_S,
+    VISION_POLL_WAIT_S,
     CameraState,
     ProximityState,
     RobotState,
+    VisionConfig,
     atomic_write_json,
     get_effective_duration_ms,
     read_json,
 )
 
 LOGGER = logging.getLogger("vision")
-STATE_PATH = Path(__file__).with_name("protocol") / "state.json"
-CAPTURE_DIR = Path(__file__).with_name("captures")
-COMMAND_PATH = Path(__file__).with_name("protocol") / "command.json"
-VISION_POLL_WAIT_S = 0.1
-VISION_EXTRA_DELAY_S = 1.0
-
-ECHO_PIN = 0
-TRIG_PIN = 1
-ULTRASONIC_TIMEOUT_S = 0.03
-ULTRASONIC_MIN_CM = 2.0
-ULTRASONIC_MAX_CM = 500.0
-ULTRASONIC_INTER_MEASURE_DELAY_S = 0.06
-ULTRASONIC_SAMPLES_PER_READ = 5
-ULTRASONIC_OUTLIER_RATIO = 0.4
-
-CAMERA_INDEX = 0
-CAMERA_WIDTH = 640
-CAMERA_HEIGHT = 480
-CAMERA_FPS = 30.0
-CAMERA_WARMUP_S = 1.0
-CAPTURE_KEEP_LAST = 30
 
 try:
     import RPi.GPIO as GPIO
@@ -66,8 +63,6 @@ try:
     import cv2
 except ImportError:
     cv2 = None
-
-STREAM_DEFAULT_PORT = 8765
 
 
 class FrameBuffer:
@@ -356,15 +351,6 @@ def run_stream_server(
     )
 
 
-@dataclass
-class VisionConfig:
-    capture_dir: Path = CAPTURE_DIR
-    capture_keep_last: int = CAPTURE_KEEP_LAST
-    stream_port: int = STREAM_DEFAULT_PORT
-    stream_enabled: bool = True
-    command_path: Path = COMMAND_PATH
-
-
 def build_sensors(
     config: VisionConfig,
     frame_buffer: Optional[FrameBuffer] = None,
@@ -493,7 +479,7 @@ def run_vision_loop(config: VisionConfig, stop_event: Optional[threading.Event] 
 
     proximity, camera = build_sensors(config, frame_buffer=frame_buffer)
     counter = 0
-    LOGGER.info("Vision started state_path=%s", STATE_PATH)
+    LOGGER.info("Vision started state_path=%s", config.state_path)
 
     last_processed_command_id = ""
     try:
@@ -509,7 +495,7 @@ def run_vision_loop(config: VisionConfig, stop_event: Optional[threading.Event] 
             counter += 1
             state = _build_state(counter, proximity, camera)
             state_payload = state.to_dict()
-            atomic_write_json(STATE_PATH, state_payload)
+            atomic_write_json(config.state_path, state_payload)
             LOGGER.info("STATE written:\n%s", json.dumps(state_payload, ensure_ascii=False, indent=2, sort_keys=True))
     finally:
         camera.close()

@@ -12,40 +12,30 @@ import argparse
 import base64
 import json
 import logging
-import os
 import threading
 import time
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from memory import get_recent_actions
-from shared import ACTIONS, RobotCommand, RobotState, atomic_write_json, read_json
+from settings import (
+    ACTIONS,
+    BRAIN_POLL_WAIT_S,
+    BrainConfig,
+    RobotCommand,
+    RobotState,
+    atomic_write_json,
+    get_brain_system_prompt,
+    read_json,
+)
 
 LOGGER = logging.getLogger("brain")
-POLL_WAIT_S = 0.1
-
-ROBOT_TASK = "Find and play with a toy"
 
 
 def _json_line(payload) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
-
-
-@dataclass
-class BrainConfig:
-    state_path: Path = Path(__file__).with_name("protocol") / "state.json"
-    command_path: Path = Path(__file__).with_name("protocol") / "command.json"
-    memory_path: Path = Path(__file__).with_name("protocol") / "memory.json"
-    ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://192.168.0.18:11434")
-    ollama_model: str = os.getenv("OLLAMA_BRAIN_MODEL", "qwen3.5:397b-cloud")
-    ollama_timeout_s: float = float(os.getenv("OLLAMA_TIMEOUT_S", "100"))
-    llm_temperature: float = 0.1
-    llm_num_predict: int = 512
-    llm_keep_alive: str = os.getenv("OLLAMA_KEEP_ALIVE", "60m")
-    log_llm_verbose: bool = False
 
 
 class BrainEngine:
@@ -84,57 +74,6 @@ class BrainEngine:
         except OSError:
             return None
 
-    @staticmethod
-    def _system_prompt() -> str:
-        allowed_actions = ", ".join(ACTIONS)
-        return f"""You are a decision engine for a small (40x40 cm) robot.
-
-**Task:** {ROBOT_TASK}.
-
-You receive:
-1. An image from the robot's front camera (what the robot sees ahead)
-2. sensor.obstacle_cm — distance to the nearest obstacle in front, in cm (null if unavailable). Safe distance: >= 50 cm. Below 50 cm — be cautious (turn away or back up).
-3. recent_actions — list of your last actions (state_id, action, reason, obstacle_cm). Use this to avoid repetitive loops.
-
-Output ONLY a JSON object with keys: action, reason. Allowed action values: {allowed_actions}
-Do not add markdown, comments, or extra keys.
-
-## Commands
-
-**Movement (drives a short distance then stops):**
-- STEP_FORWARD — move forward
-- STEP_BACKWARD — move backward
-
-**Rotation (turns in place):**
-- TURN_LEFT_15, TURN_RIGHT_15 — small correction (~15°)
-- TURN_LEFT_45, TURN_RIGHT_45 — larger turn (~45°)
-
-**Other:**
-- LIGHT_ON — turn light on
-- LIGHT_OFF — turn light off
-- PLAY — celebrate: use when toy is found and close, or to express joy
-
-## Rules
-
-1. **Safety and navigation:**
-   - Combine the image and sensor.obstacle_cm to assess the situation. Obstacles in the image (wall, furniture, chair, legs, person) and low distance readings both suggest caution — turn away or back up.
-   - Obstacle on left → consider TURN_RIGHT. Obstacle on right → consider TURN_LEFT. Obstacle center → TURN_LEFT or TURN_RIGHT.
-
-2. **Target seeking (when obstacle_cm >= 50 or null):**
-   - Goal: keep the toy in the center of the image. If the toy is offset — turn towards it first. Do not drive forward past a toy that is off-center; you will miss it.
-   - Toy on left side → TURN_LEFT_15 or TURN_LEFT_45 (turn until it moves toward center)
-   - Toy at center → STEP_FORWARD
-   - Toy on right side → TURN_RIGHT_15 or TURN_RIGHT_45 (turn until it moves toward center)
-   - No toy visible → slow search turn (TURN_LEFT_15 or TURN_RIGHT_15) to find it
-   - Toy found and close (obstacle_cm < 30 or toy fills center) → PLAY to celebrate
-
-3. **Light:** If the image looks dark (low lighting, poorly lit room, shadows) — use LIGHT_ON to illuminate the scene. You can also use LIGHT_ON to draw attention to nearby toys. Use LIGHT_OFF when there is enough light. Avoid getting stuck in light-only loops (alternating LIGHT_ON/LIGHT_OFF repeatedly without movement).
-
-4. **Use recent_actions:** You receive recent_actions (last actions taken). Use this history to avoid loops.
-
-5. **Thinking** Keep reasoning short."""
-
-
     def _request_ollama(self, state: RobotState) -> Optional[Dict[str, Any]]:
         started_at = time.perf_counter()
 
@@ -167,7 +106,7 @@ Do not add markdown, comments, or extra keys.
                 "num_predict": self.config.llm_num_predict,
             },
             "messages": [
-                {"role": "system", "content": self._system_prompt()},
+                {"role": "system", "content": get_brain_system_prompt()},
                 user_message,
             ],
         }
@@ -244,16 +183,16 @@ def run_brain_loop(config: BrainConfig, stop_event: Optional[threading.Event] = 
     while not stop_event.is_set():
         raw_state = read_json(config.state_path)
         if not isinstance(raw_state, dict):
-            stop_event.wait(POLL_WAIT_S)
+            stop_event.wait(BRAIN_POLL_WAIT_S)
             continue
 
         state = RobotState.from_dict(raw_state)
         if not state.state_id:
-            stop_event.wait(POLL_WAIT_S)
+            stop_event.wait(BRAIN_POLL_WAIT_S)
             continue
 
         if state.state_id == last_state_id:
-            stop_event.wait(POLL_WAIT_S)
+            stop_event.wait(BRAIN_POLL_WAIT_S)
             continue
 
         LOGGER.info("Brain deciding state_id=%s", state.state_id)

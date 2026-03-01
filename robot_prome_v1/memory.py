@@ -10,23 +10,18 @@ from __future__ import annotations
 
 import logging
 import threading
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from shared import atomic_write_json, read_json, zero_memory_payload
+from settings import (
+    MEMORY_POLL_WAIT_S,
+    MemoryConfig,
+    atomic_write_json,
+    read_json,
+    zero_memory_payload,
+)
 
 LOGGER = logging.getLogger("memory")
-POLL_WAIT_S = 0.1
-MEMORY_MAX_ENTRIES = 10
-
-
-@dataclass
-class MemoryConfig:
-    state_path: Path = Path(__file__).with_name("protocol") / "state.json"
-    command_path: Path = Path(__file__).with_name("protocol") / "command.json"
-    memory_path: Path = Path(__file__).with_name("protocol") / "memory.json"
-    max_entries: int = MEMORY_MAX_ENTRIES
 
 
 def _ensure_memory_file(memory_path: Path) -> None:
@@ -71,12 +66,12 @@ def run_memory_loop(config: MemoryConfig, stop_event: Optional[threading.Event] 
     while not stop_event.is_set():
         raw_command = read_json(config.command_path)
         if not isinstance(raw_command, dict):
-            stop_event.wait(POLL_WAIT_S)
+            stop_event.wait(MEMORY_POLL_WAIT_S)
             continue
 
         command_id = str(raw_command.get("command_id", ""))
         if not command_id or command_id == last_command_id:
-            stop_event.wait(POLL_WAIT_S)
+            stop_event.wait(MEMORY_POLL_WAIT_S)
             continue
 
         raw_state = read_json(config.state_path)
