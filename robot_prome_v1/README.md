@@ -22,15 +22,7 @@ flowchart LR
     memoryJSON --> brain["brain.py"]
 ```
 
-## Упрощенная блок схема 
-
-```mermaid
-flowchart LR
-    Vision --> Brain["brain.py"]
-    Brain --> Controller["controller.py"]
-    Controller --> Memory["memory.py"]
-    Memory --> Brain["brain.py"]
-```
+## Блок схема 
 
 ```mermaid
 flowchart TD
