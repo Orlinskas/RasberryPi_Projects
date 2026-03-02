@@ -82,27 +82,26 @@ flowchart TD
 
 ## Настройка окружения и старт
 
-Ниже описана пошаговая установка всех зависимостей для **macOS** и **Windows**. 
-На Raspberry Pi используется аналогичный подход; дополнительно потребуется `RPi.GPIO` (см. раздел для Pi).
-
----
-
 ### 1. Python (3.8+)
 
 Проект требует Python 3.8 или выше.
 
 ### 2. Зависимости Python
 
-opencv-python>=4.8.0
-RPi.GPIO>=0.7.0
+- opencv-python>=4.8.0
+- RPi.GPIO>=0.7.0
 
 ### 3. Ollama (LLM для brain)
 
 Модуль `brain.py` использует Ollama для принятия решений по кадру камеры. Ollama должен быть запущен на Raspberry PI.
+Требуется мощная **vision-модель**. По умолчанию в проекте используется `qwen3.5:397b-cloud` (переменная `OLLAMA_BRAIN_MODEL`).
+
+Выполнить на Raspberry:
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
 ollama serve
+ollama run qwen3.5:397b-cloud 
 ```
 
 **Проверка:**
@@ -111,13 +110,11 @@ ollama serve
 ollama list
 ```
 
-### 4. Модель Ollama с поддержкой изображений
+На Raspberry Pi добавьте GPIO и установите зависимости:
 
-`brain.py` отправляет кадры камеры в модель. Требуется мощная **vision-модель**.
-
-**Рекомендуемая модель:**
-
-По умолчанию в проекте используется `qwen3.5:397b-cloud` (переменная `OLLAMA_BRAIN_MODEL`). Чтобы задать другую модель:
+```bash
+pip install RPi.GPIO
+```
 
 ### 5. Запуск проекта
 
@@ -150,16 +147,6 @@ python3 main.py --verbose
 
 ---
 
-### 6. Raspberry Pi (дополнительно)
-
-На Raspberry Pi добавьте GPIO и установите зависимости:
-
-```bash
-pip install RPi.GPIO
-```
-
----
-
 ## Видеопоток камеры
 
 При запуске с камерой (OpenCV) автоматически поднимается MJPEG-сервер. Откройте в браузере URL, который выводится при старте:
@@ -173,16 +160,5 @@ pip install RPi.GPIO
 ```
 
 - Порт по умолчанию: `8765`. Можно изменить: `python3 main.py --stream-port 9000`
-- Отключить поток: `python3 main.py --no-stream`
 - Поток использует кадры из основного vision-цикла и не влияет на работу робота
-
-## Быстрый старт
-
-После [настройки окружения](#настройка-окружения-и-старт):
-
-```bash
-cd robot_prome_v1
-python3 main.py
-```
-
-Или с dry-режимом (без моторов): `python3 main.py --mode dry`
+- 
