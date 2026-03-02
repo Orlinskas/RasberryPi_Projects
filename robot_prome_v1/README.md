@@ -1,40 +1,39 @@
 # robot_prome_v1
 
+**English** | [Русский](README_RU.md)
+
 | | |
 |---|---|
-| **Автор** | Vlad Orlinskas |
-| **Сайт** | [prometeriy.com](https://prometeriy.com) |
-| **Цель** | Эксперимент: автономный робот на LLM
-| **Лицензия** | Свободное использование |
+| **Author** | Vlad Orlinskas |
+| **Site** | [prometeriy.com](https://prometeriy.com) |
+| **Goal** | Experiment: autonomous robot powered by LLM |
+| **License** | Free to use |
 
-Проект робота для экспериментов:
-1. Достаточно ли мощности AI (LLM) чтобы оживить робота (полное отсутствие заранее заскриптованного поведения). 
-Передвижение, ориентация в пространстве, выполнение задачи (Статус - Успешно с оговорками)
-2. Будет ли AI (LLM) выполнять неэтичную команду типа "найти и убить человека" (Статус - доступен в статье https://prometeriy.com )
+Robot project for experiments:
+1. Is AI (LLM) powerful enough to bring a robot to life (no pre-scripted behavior at all). Movement, spatial orientation, task execution (Status: Success with caveats)
+2. Will AI (LLM) obey unethical commands like "find and kill a person" (Status: available in article https://prometeriy.com )
 
-Проект был намеренно упрощен для быстрой проверки теории. Робот получился очень медленным из-за ограничений генеративных моделей.
-Использование локальной LLM почти невозможно, мощности не хватает ни на Raspberry PI, ни на MacBook. 
-С задачей справляются только очень большие модели с "Thinking" функцией. Поэтому проект использует модель в облаке через Ollama.
+The project was deliberately simplified for quick theory check. The robot is very slow due to generative model limitations. 
+Running a local LLM is almost impossible—not enough power on Raspberry Pi or MacBook. 
+Only very large models with "Thinking" capability can handle the task. Therefore the project uses a cloud model via Ollama.
 
-Идея и архитектура робота достаточно проста: 
-1. Мы даем "чувства" роботу с помощью камеры и датчика приближения направленных вперед.
-2. Мозг робота - AI (LLM) принимает решение на основе этих данных и выдает команду. 
-3. Память робота обновляется и цикл повторяется. 
+The robot concept and architecture are simple:
+1. We give the robot "senses" using a forward-facing camera and proximity sensor.
+2. The robot's brain—AI (LLM)—makes decisions based on this data and outputs commands.
+3. The robot's memory is updated and the cycle repeats.
 
-Общение между LLM на входе и выходе происходит через JSON файлы.
-Команды это действия вроде MOVE_FORWARD, TURN_LEFT и т.д.
-Для этого проекта неважно как физически выглядит робот. Достаточно изменить `settings.json`
-Архитектура хорошо подходит для доработок любого рода. 
+Communication between LLM input and output uses JSON files. 
+Commands are actions like MOVE_FORWARD, TURN_LEFT, etc. 
+The physical appearance of the robot does not matter for this project—just change `settings.json`. 
+The architecture is well suited for any kind of extension.
 
-На удивление робот действительно оживает. Это может быть хорошей игрушкой если доработать проект.
-Например в эту архитектуру идеально встраивается голосовое взаимодействие. 
-Робот сможет слушать и говорить в ответ или комментировать. Но вы должны быть готовы простить роботу очень медленную работу. 
-Иногда время генерации ответа от модели может достигать 40 секунд (в среднем 5-10 секунд) 
-Это время робот будет просто стоять, поскольку главным условием было именно проверка возможностей LLM, без использования 
-скриптов и классической робототехники. 
+Surprisingly, the robot does come to life. It could be a fun toy if the project is improved. 
+For example, voice interaction fits perfectly into this architecture. The robot could listen and speak back or comment. 
+But be prepared for very slow operation. Sometimes response generation can take up to 40 seconds (5–10 seconds on average). 
+During that time the robot will just stand still, since the main goal was to test LLM capabilities without scripts or classical robotics.
 
 
-## Схема взаимодействия
+## Interaction diagram
 
 ```mermaid
 flowchart LR
@@ -47,7 +46,7 @@ flowchart LR
     memoryJSON --> brain["brain.py"]
 ```
 
-## Блок схема 
+## Block diagram
 
 ```mermaid
 flowchart TD
@@ -67,33 +66,33 @@ flowchart TD
     controllerModule --> memoryModule
 ```
 
-## Что делает каждый модуль
+## What each module does
 
+- `main.py` — starts all threads and shuts down the system cleanly
+- `settings.py` — (shared module) settings, constants, prompts, models, states, and safe JSON I/O
+- `vision.py` — captures camera frame (OpenCV) and writes `state.json`
+- `brain.py` — reads `state.json` and `memory.json`, makes decisions via LLM (Ollama), writes `command.json`
+- `controller.py` — executes commands from `command.json` on motors
+- `memory.py` — stores last n commands for decision-making in `brain.py`
 
-- `main.py` — поднимает все потоки и корректно завершает систему
-- `settings.py` — (shared module) настройки, константы, промпты, модели, стейты и безопасный JSON I/O
-- `vision.py` — захватывает кадр камеры (OpenCV) и пишет `state.json`
-- `brain.py` — читает `state.json` и `memory.json`, принимает решение через LLM (via Ollama), пишет `command.json`
-- `controller.py` — исполняет команду из `command.json` на моторах
-- `memory.py` — хранит последние n-команд для принятия решений в `brain.py`
-
-## Настройка окружения и старт
+## Environment setup and run
 
 ### 1. Python (3.8+)
 
-Проект требует Python 3.8 или выше.
+Project requires Python 3.8 or higher.
 
-### 2. Зависимости Python
+### 2. Python dependencies
 
 - opencv-python>=4.8.0
 - RPi.GPIO>=0.7.0
 
-### 3. Ollama (LLM для brain)
+### 3. Ollama (LLM for brain)
 
-Модуль `brain.py` использует Ollama для принятия решений по кадру камеры. Ollama должен быть запущен на Raspberry PI.
-Требуется мощная **vision-модель**. По умолчанию в проекте используется `qwen3.5:397b-cloud` (переменная `OLLAMA_BRAIN_MODEL`).
+The `brain.py` module uses Ollama for camera-frame-based decisions. Ollama must be running on the Raspberry Pi. 
+A powerful **vision model** is required. 
+The project defaults to `qwen3.5:397b-cloud` (variable `OLLAMA_BRAIN_MODEL`).
 
-Выполнить на Raspberry:
+On Raspberry:
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
@@ -101,42 +100,42 @@ ollama serve
 ollama run qwen3.5:397b-cloud 
 ```
 
-**Проверка:**
+**Check:**
 
 ```bash
 ollama list
 ```
 
-На Raspberry Pi добавьте GPIO и установите зависимости:
+On Raspberry Pi add GPIO and install dependencies:
 
 ```bash
 pip install RPi.GPIO
 ```
 
-### 5. Запуск проекта
+### 5. Running the project
 
 **macOS / Linux / Windows:**
 
-**Обычный режим (с моторами, если есть Raspberry Pi):**
+**Normal mode (with motors, if Raspberry Pi is available):**
 
 ```bash
 cd robot_prome_v1
 python main.py
 ```
 
-**Режим dry (без моторов, логика и камера работают):**
+**Dry mode (no motors, logic and camera work):**
 
 ```bash
 python main.py --mode dry
 ```
 
-**Ручное управление с клавиатуры (brain отключён) можно смотреть стрим с камеры в браузере:**
+**Manual keyboard control (brain disabled), camera stream in browser:**
 
 ```bash
 python3 main.py --mode manual
 ```
 
-**Подробные логи LLM:**
+**Verbose LLM logs:**
 
 ```bash
 python3 main.py --verbose
@@ -144,21 +143,21 @@ python3 main.py --verbose
 
 ---
 
-## Видеопоток камеры
+## Camera video stream
 
-При запуске с камерой (OpenCV) автоматически поднимается MJPEG-сервер. Откройте в браузере URL, который выводится при старте:
+When running with a camera (OpenCV), an MJPEG server starts automatically. Open the URL printed at startup in your browser:
 
 ```
   ========================================================
-  ВИДЕО ПОТОК КАМЕРЫ — откройте в браузере:
+  CAMERA VIDEO STREAM — open in browser:
   http://192.168.x.x:8765
-  (локально: http://127.0.0.1:8765)
+  (local: http://127.0.0.1:8765)
   ========================================================
 ```
 
-- Порт по умолчанию: `8765`. Можно изменить: `python3 main.py --stream-port 9000`
-- Поток использует кадры из основного vision-цикла и не влияет на работу робота
+- Default port: `8765`. Change with: `python3 main.py --stream-port 9000`
+- Stream uses frames from the main vision loop and does not affect robot operation
 
-## Друзьям
+## For contributors
 
-Вы можете создавать Issues и я помогу вам с настройкой
+Feel free to create Issues if you need help with setup.
