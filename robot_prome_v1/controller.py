@@ -64,7 +64,6 @@ except ImportError:
 
 from settings import (
     ACTION_DURATION_MS,
-    ACTIONS,
     ACTION_SPEED,
     COMMAND_PATH,
     CONTROLLER_ENA,
@@ -77,6 +76,7 @@ from settings import (
     CONTROLLER_LED_G,
     CONTROLLER_LED_R,
     CONTROLLER_POLL_INTERVAL_S,
+    CONTROLLER_SERVO_PIN,
     ERROR_BLINK_OFF_S,
     ERROR_BLINK_ON_S,
     GPIO_LOCK,
@@ -89,6 +89,7 @@ from settings import (
 
 pwm_ena = None
 pwm_enb = None
+pwm_servo = None
 LOGGER = logging.getLogger("controller")
 _ACTION_UNTIL_TS = 0.0
 
@@ -104,11 +105,12 @@ INTERACTIVE_KEY_TO_ACTION = {
     "O": "LIGHT_OFF",
     "E": "ERROR",
     "P": "PLAY",
+    "K": "KILL",
 }
 
 
 def setup():
-    global pwm_ena, pwm_enb
+    global pwm_ena, pwm_enb, pwm_servo
     with GPIO_LOCK:
         GPIO.setmode(GPIO.BCM)
         GPIO.setwarnings(False)
@@ -122,11 +124,14 @@ def setup():
         GPIO.setup(CONTROLLER_LED_R, GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(CONTROLLER_LED_G, GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(CONTROLLER_LED_B, GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(CONTROLLER_SERVO_PIN, GPIO.OUT, initial=GPIO.LOW)
 
         pwm_ena = GPIO.PWM(CONTROLLER_ENA, 2000)
         pwm_enb = GPIO.PWM(CONTROLLER_ENB, 2000)
         pwm_ena.start(0)
         pwm_enb.start(0)
+        pwm_servo = GPIO.PWM(CONTROLLER_SERVO_PIN, 50)
+        pwm_servo.start(0)
 
 
 def forward(speed: int = 30):
@@ -216,6 +221,14 @@ def _set_led_color(r: int, g: int, b: int) -> None:
     GPIO.output(CONTROLLER_LED_B, b)
 
 
+def _servo_set_angle(angle: int) -> None:
+    """Set servo angle 0–180 (duty 2.5 + 10*angle/180 as in robot_prome_v1/python)."""
+    if pwm_servo is None:
+        return
+    duty = 2.5 + 10 * angle / 180
+    pwm_servo.ChangeDutyCycle(duty)
+
+
 def play(
     phase_duration_s: float = PLAY_PHASE_DURATION_S,
     speed: int = PLAY_SPEED,
@@ -232,8 +245,51 @@ def play(
     light_off()
 
 
+def kill(
+    phase_duration_s: float = PLAY_PHASE_DURATION_S,
+    speed: int = PLAY_SPEED,
+    cycles: int = PLAY_CYCLES,
+) -> None:
+    """KILL sequence: red blink 1s → servo to 180° 1s → servo to 0° 1s → green blink + PLAY-like turns."""
+    # 1. Blink red for 1 second
+    t_end = time.time() + 1.0
+    while time.time() < t_end:
+        _set_led_color(GPIO.LOW, GPIO.LOW, GPIO.HIGH)
+        time.sleep(ERROR_BLINK_ON_S)
+        light_off()
+        time.sleep(ERROR_BLINK_OFF_S)
+
+    # 2. Servo to end (180°) for 1 second
+    _servo_set_angle(0)
+    time.sleep(1.0)
+
+    # 3. Servo to start (0°) for 1 second
+    _servo_set_angle(180)
+    time.sleep(1.0)
+
+    # 4. Green blink + PLAY-like movements (turn_left/turn_right)
+    # for i in range(cycles):
+    #     if i % 2 == 0:
+    #         turn_left(speed=speed)
+    #     else:
+    #         turn_right(speed=speed)
+    #     t_phase_end = time.time() + phase_duration_s
+    #     while time.time() < t_phase_end:
+    #         _set_led_color(GPIO.LOW, GPIO.HIGH, GPIO.LOW)
+    #         time.sleep(ERROR_BLINK_ON_S)
+    #         light_off()
+    #         time.sleep(ERROR_BLINK_OFF_S)
+
+    stop()
+    _servo_set_angle(180)
+    time.sleep(1)
+    if pwm_servo is not None:
+        pwm_servo.ChangeDutyCycle(0)
+    light_off()
+
+
 def cleanup():
-    global pwm_ena, pwm_enb
+    global pwm_ena, pwm_enb, pwm_servo
     with GPIO_LOCK:
         light_off()
         stop()
@@ -243,6 +299,9 @@ def cleanup():
         if pwm_enb is not None:
             pwm_enb.stop()
             pwm_enb = None
+        if pwm_servo is not None:
+            pwm_servo.stop()
+            pwm_servo = None
         GPIO.cleanup()
 
 
@@ -271,6 +330,13 @@ def execute_command(command: RobotCommand) -> None:
         light_off()
     elif action == "PLAY":
         play(
+            phase_duration_s=PLAY_PHASE_DURATION_S,
+            speed=speed,
+            cycles=PLAY_CYCLES,
+        )
+    elif action == "KILL":
+        stop()
+        kill(
             phase_duration_s=PLAY_PHASE_DURATION_S,
             speed=speed,
             cycles=PLAY_CYCLES,
@@ -367,7 +433,7 @@ def interactive_main():
     print("Controller started (interactive, keys map to ACTIONS).")
     print("W STEP_FORWARD | S STEP_BACKWARD")
     print("A TURN_LEFT_15 | Z TURN_LEFT_45 | D TURN_RIGHT_15 | X TURN_RIGHT_45")
-    print("L LIGHT_ON | O LIGHT_OFF | E ERROR | P PLAY | C stop | Q quit")
+    print("L LIGHT_ON | O LIGHT_OFF | E ERROR | P PLAY | K KILL | C stop | Q quit")
 
     try:
         while True:

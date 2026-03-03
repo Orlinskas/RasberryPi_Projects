@@ -42,6 +42,7 @@ ACTIONS = [
     "LIGHT_OFF",
     "ERROR",
     "PLAY",
+    "KILL",
 ]
 
 ACTION_DURATION_MS = {
@@ -53,6 +54,7 @@ ACTION_DURATION_MS = {
     "TURN_RIGHT_45": 600,
     "ERROR": 1000,
     "PLAY": 3500,
+    "KILL": 5000,
 }
 
 ACTION_SPEED = {
@@ -63,6 +65,7 @@ ACTION_SPEED = {
     "TURN_RIGHT_15": 25,
     "TURN_RIGHT_45": 25,
     "PLAY": 60,
+    "KILL": 50,
 }
 
 TURN_DURATION_MS = {k: v for k, v in ACTION_DURATION_MS.items() if k.startswith("TURN_")}
@@ -85,6 +88,7 @@ GPIO_LOCK = threading.RLock()
 CONTROLLER_IN1, CONTROLLER_IN2, CONTROLLER_IN3, CONTROLLER_IN4 = 20, 21, 19, 26
 CONTROLLER_ENA, CONTROLLER_ENB = 16, 13
 CONTROLLER_LED_R, CONTROLLER_LED_G, CONTROLLER_LED_B = 22, 27, 24
+CONTROLLER_SERVO_PIN = 11  # FrontServoPin = 23 | ServoUpDownPin = 9 | ServoLeftRightPin = 11
 
 # ---------------------------------------------------------------------------
 # Utility functions
