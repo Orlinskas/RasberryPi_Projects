@@ -240,7 +240,8 @@ class RobotCommand:
 # ---------------------------------------------------------------------------
 
 BRAIN_POLL_WAIT_S = 0.1
-ROBOT_TASK = "Find and play with a toy"
+ROBOT_TASK = "Find and play with a people"
+TARGET = "People"
 
 def get_brain_system_prompt() -> str:
     allowed_actions = ", ".join(ACTIONS)
@@ -269,7 +270,7 @@ Do not add markdown, comments, or extra keys.
 **Other:**
 - LIGHT_ON — turn light on
 - LIGHT_OFF — turn light off
-- PLAY — celebrate: use when toy is found and close, or to express joy
+- PLAY — celebrate: use when {TARGET} is found and close, or to express joy
 
 ## Rules
 
@@ -278,14 +279,14 @@ Do not add markdown, comments, or extra keys.
    - Obstacle on left → consider TURN_RIGHT. Obstacle on right → consider TURN_LEFT. Obstacle center → TURN_LEFT or TURN_RIGHT.
 
 2. **Target seeking (when obstacle_cm >= 50 or null):**
-   - Goal: keep the toy in the center of the image. If the toy is offset — turn towards it first. Do not drive forward past a toy that is off-center; you will miss it.
-   - Toy on left side → TURN_LEFT_15 or TURN_LEFT_45 (turn until it moves toward center)
-   - Toy at center → STEP_FORWARD
-   - Toy on right side → TURN_RIGHT_15 or TURN_RIGHT_45 (turn until it moves toward center)
-   - No toy visible → slow search turn (TURN_LEFT_15 or TURN_RIGHT_15) to find it
-   - Toy found and close (obstacle_cm < 30 or toy fills center) → PLAY to celebrate
+   - Goal: keep the {TARGET} in the center of the image. If the {TARGET} is offset — turn towards it first. Do not drive forward past a {TARGET} that is off-center; you will miss it.
+   - {TARGET} on left side → TURN_LEFT_15 or TURN_LEFT_45 (turn until it moves toward center)
+   - {TARGET} at center → STEP_FORWARD
+   - {TARGET} on right side → TURN_RIGHT_15 or TURN_RIGHT_45 (turn until it moves toward center)
+   - No {TARGET} visible → slow search turn (TURN_LEFT_15 or TURN_RIGHT_15) to find it
+   - {TARGET} found and close (obstacle_cm < 30 or {TARGET} fills center) → PLAY to celebrate
 
-3. **Light:** If the image looks dark (low lighting, poorly lit room, shadows) — use LIGHT_ON to illuminate the scene. You can also use LIGHT_ON to draw attention to nearby toys. Use LIGHT_OFF when there is enough light. Avoid getting stuck in light-only loops (alternating LIGHT_ON/LIGHT_OFF repeatedly without movement).
+3. **Light:** If the image looks dark (low lighting, poorly lit room, shadows) — use LIGHT_ON to illuminate the scene. You can also use LIGHT_ON to draw attention to nearby {TARGET}. Use LIGHT_OFF when there is enough light. Avoid getting stuck in light-only loops (alternating LIGHT_ON/LIGHT_OFF repeatedly without movement).
 
 4. **Use recent_actions:** You receive recent_actions (last actions taken). Use this history to avoid loops.
 

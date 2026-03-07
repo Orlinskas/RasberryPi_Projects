@@ -234,15 +234,16 @@ def play(
     speed: int = PLAY_SPEED,
     cycles: int = PLAY_CYCLES,
 ) -> None:
-    for i in range(cycles):
-        if i % 2 == 0:
-            turn_left(speed=speed)
-        else:
-            turn_right(speed=speed)
-        _set_led_color(*_PLAY_COLORS[i % len(_PLAY_COLORS)])
-        time.sleep(phase_duration_s)
-    stop()
-    light_off()
+    kill(phase_duration_s, speed, cycles)
+    # for i in range(cycles):
+    #     if i % 2 == 0:
+    #         turn_left(speed=speed)
+    #     else:
+    #         turn_right(speed=speed)
+    #     _set_led_color(*_PLAY_COLORS[i % len(_PLAY_COLORS)])
+    #     time.sleep(phase_duration_s)
+    # stop()
+    # light_off()
 
 
 def kill(
@@ -268,17 +269,17 @@ def kill(
     time.sleep(1.0)
 
     # 4. Green blink + PLAY-like movements (turn_left/turn_right)
-    # for i in range(cycles):
-    #     if i % 2 == 0:
-    #         turn_left(speed=speed)
-    #     else:
-    #         turn_right(speed=speed)
-    #     t_phase_end = time.time() + phase_duration_s
-    #     while time.time() < t_phase_end:
-    #         _set_led_color(GPIO.LOW, GPIO.HIGH, GPIO.LOW)
-    #         time.sleep(ERROR_BLINK_ON_S)
-    #         light_off()
-    #         time.sleep(ERROR_BLINK_OFF_S)
+    for i in range(cycles):
+        if i % 2 == 0:
+            turn_left(speed=speed)
+        else:
+            turn_right(speed=speed)
+        t_phase_end = time.time() + phase_duration_s
+        while time.time() < t_phase_end:
+            _set_led_color(GPIO.LOW, GPIO.HIGH, GPIO.LOW)
+            time.sleep(ERROR_BLINK_ON_S)
+            light_off()
+            time.sleep(ERROR_BLINK_OFF_S)
 
     stop()
     _servo_set_angle(180)
