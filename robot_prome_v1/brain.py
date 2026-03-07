@@ -43,13 +43,20 @@ class BrainEngine:
         self.config = config
         self._counter = 0
 
-    def _new_command(self, action: str, state_id: str, reason: str) -> RobotCommand:
+    def _new_command(
+        self,
+        action: str,
+        state_id: str,
+        reason: str,
+        voice: Optional[str] = None,
+    ) -> RobotCommand:
         self._counter += 1
         return RobotCommand(
             command_id=f"cmd_{self._counter:06d}",
             based_on_state_id=state_id,
             action=action,
             reason=reason,
+            voice=voice,
         )
 
     def _build_llm_prompt(self, state: RobotState) -> str:
@@ -152,12 +159,15 @@ class BrainEngine:
         return decision
 
     @staticmethod
-    def _normalize_llm_decision(payload: Dict[str, Any]) -> Optional[Tuple[str, str]]:
+    def _normalize_llm_decision(payload: Dict[str, Any]) -> Optional[Tuple[str, str, Optional[str]]]:
         action = str(payload.get("action", "")).upper()
         if action not in ACTIONS:
             return None
         reason = str(payload.get("reason", "llm_decision")).strip() or "llm_decision"
-        return action, reason
+        voice_raw = payload.get("voice")
+        voice = str(voice_raw).strip() if voice_raw is not None else ""
+        voice = voice or None
+        return action, reason, voice
 
     def decide(self, state: Optional[RobotState]) -> RobotCommand:
         if state is None:
@@ -170,8 +180,8 @@ class BrainEngine:
         if normalized is None:
             return self._new_command("ERROR", state.state_id, "llm_invalid_response_fail_safe")
 
-        action, reason = normalized
-        return self._new_command(action, state.state_id, reason)
+        action, reason, voice = normalized
+        return self._new_command(action, state.state_id, reason, voice)
 
 
 def run_brain_loop(config: BrainConfig, stop_event: Optional[threading.Event] = None) -> None:

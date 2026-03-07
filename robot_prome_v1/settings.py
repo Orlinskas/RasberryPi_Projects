@@ -213,25 +213,33 @@ class RobotCommand:
     based_on_state_id: str = ""
     action: str = "LIGHT_OFF"
     reason: str = "default"
+    voice: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             "command_id": self.command_id,
             "based_on_state_id": self.based_on_state_id,
             "action": self.action,
             "reason": self.reason,
         }
+        if self.voice is not None and self.voice.strip():
+            result["voice"] = self.voice
+        return result
 
     @classmethod
     def from_dict(cls, payload: Dict[str, Any]) -> "RobotCommand":
         action = str(payload.get("action", "LIGHT_OFF")).upper()
         if action not in ACTIONS:
             action = "LIGHT_OFF"
+        voice_raw = payload.get("voice")
+        voice = str(voice_raw).strip() if voice_raw is not None else ""
+        voice = voice or None
         return cls(
             command_id=str(payload.get("command_id", "")),
             based_on_state_id=str(payload.get("based_on_state_id", "")),
             action=action,
             reason=str(payload.get("reason", "unspecified")),
+            voice=voice,
         )
 
 
@@ -254,8 +262,16 @@ You receive:
 2. sensor.obstacle_cm — distance to the nearest obstacle in front, in cm (null if unavailable). Safe distance: >= 50 cm. Below 50 cm — be cautious (turn away or back up).
 3. recent_actions — list of your last actions (state_id, action, reason, obstacle_cm). Use this to avoid repetitive loops.
 
-Output ONLY a JSON object with keys: action, reason. Allowed action values: {allowed_actions}
+Output ONLY a JSON object with keys: action, reason, voice. Allowed action values: {allowed_actions}
 Do not add markdown, comments, or extra keys.
+- **voice** : a short phrase or comment on Russian from the robot about the current situation, can be humorous.
+
+**JSON Example:**
+{{
+  "action": "LIGHT_OFF",
+  "reason": "No image available, sensor indicates no obstacles, safe state",
+  "voice": "Some phrase on Russian"
+}}
 
 ## Commands
 

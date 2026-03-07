@@ -16,6 +16,7 @@ from pathlib import Path
 from brain import BrainConfig, run_brain_loop
 from controller import interactive_main, run_controller_loop
 from memory import MemoryConfig, run_memory_loop
+from voice import run_voice_loop
 from settings import (
     CONTROLLER_POLL_INTERVAL_S,
     STREAM_DEFAULT_PORT,
@@ -129,6 +130,12 @@ def main() -> None:
                 target=run_controller_loop,
                 args=(command_path, CONTROLLER_POLL_INTERVAL_S, stop_event, args.mode == "run"),
                 name="controller",
+                daemon=True,
+            ),
+            threading.Thread(
+                target=run_voice_loop,
+                args=(command_path, CONTROLLER_POLL_INTERVAL_S, stop_event),
+                name="voice",
                 daemon=True,
             ),
         ])
