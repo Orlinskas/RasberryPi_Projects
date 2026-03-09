@@ -4,6 +4,9 @@
 
 [Buying guide (EN)](BUYING_GUIDE.md) 
 
+Видеообзор
+https://youtu.be/u-pPMKqkYlQ
+
 | | |
 |---|---|
 | **Автор** | Vlad Orlinskas |
