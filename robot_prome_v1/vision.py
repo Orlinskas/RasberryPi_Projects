@@ -611,6 +611,9 @@ def run_vision_loop(config: VisionConfig, stop_event: Optional[threading.Event] 
             last_processed_command_id = command_id
             counter += 1
             state = _build_state(counter, proximity, camera)
+            previous_state = read_json(config.state_path)
+            if isinstance(previous_state, dict):
+                state.command = str(previous_state.get("command", "")).strip()
             state_payload = state.to_dict()
             atomic_write_json(config.state_path, state_payload)
             LOGGER.info("STATE written:\n%s", json.dumps(state_payload, ensure_ascii=False, indent=2, sort_keys=True))

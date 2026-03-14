@@ -83,6 +83,8 @@ flowchart TD
 - `brain.py` — читает `state.json` и `memory.json`, принимает решение через LLM (via Ollama), пишет `command.json`
 - `controller.py` — исполняет команду из `command.json` на моторах
 - `memory.py` — хранит последние n-команд для принятия решений в `brain.py`
+- `microfone.py` — слушает USB-микрофон, ловит ключевое слово и пишет распознанную команду в `state.json.command`
+- `voice.py` — озвучивает текст из `command.json.voice` через локальный TTS
 
 ## Настройка окружения и старт
 
@@ -94,6 +96,8 @@ flowchart TD
 
 - opencv-python>=4.8.0
 - RPi.GPIO>=0.7.0
+- sounddevice>=0.4.6
+- vosk>=0.3.45
 
 ### 3. Ollama (LLM для brain)
 
@@ -118,6 +122,14 @@ ollama list
 
 ```bash
 pip install RPi.GPIO
+```
+
+### 4. Модель распознавания речи (Vosk, русский)
+
+`microfone.py` использует офлайн распознавание Vosk. Скачайте любую русскую модель с [Vosk models](https://alphacephei.com/vosk/models), распакуйте на Raspberry Pi и укажите путь через `VOSK_MODEL_PATH`:
+
+```bash
+export VOSK_MODEL_PATH=/home/pi/vosk-model-small-ru-0.22
 ```
 
 ### 5. Запуск проекта
@@ -147,6 +159,22 @@ python3 main.py --mode manual
 
 ```bash
 python3 main.py --verbose
+```
+
+### Модуль микрофона (отдельный запуск)
+
+Независимый запуск отдельным процессом:
+
+```bash
+python3 microphone.py
+```
+
+Полезные параметры:
+
+```bash
+python3 microphone.py --list-devices
+python3 microphone.py --test
+python3 microphone.py --device-index 2
 ```
 
 ---

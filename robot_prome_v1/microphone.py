@@ -1,0 +1,286 @@
+#!/usr/bin/env python3
+# ---------------------------------------------------------------------------
+# Author:   Vlad Orlinskas
+# Site:     https://prometeriy.com
+# Project:  robot_prome_v1 — LLM-driven autonomous robot experiment
+# License:  Free for any use
+# ---------------------------------------------------------------------------
+
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import threading
+import time
+from pathlib import Path
+from typing import Optional
+
+from settings import (
+    MicrophoneConfig,
+    atomic_write_json,
+    read_json,
+    zero_state_payload,
+)
+
+LOGGER = logging.getLogger("microphone")
+
+try:
+    import sounddevice as sd
+except ImportError:
+    sd = None
+
+try:
+    from vosk import KaldiRecognizer, Model, SetLogLevel
+except ImportError:
+    KaldiRecognizer = None
+    Model = None
+    SetLogLevel = None
+
+
+def _normalize_text(text: str) -> str:
+    return " ".join(str(text).strip().split())
+
+
+def _extract_text(raw_json: str) -> str:
+    try:
+        payload = json.loads(raw_json)
+    except (TypeError, ValueError):
+        return ""
+    text = payload.get("text", "")
+    return _normalize_text(text)
+
+
+def _extract_partial_text(raw_json: str) -> str:
+    try:
+        payload = json.loads(raw_json)
+    except (TypeError, ValueError):
+        return ""
+    text = payload.get("partial", "")
+    return _normalize_text(text)
+
+
+def _update_state_command(state_path: Path, command_text: str) -> None:
+    state = read_json(state_path)
+    if not isinstance(state, dict):
+        state = zero_state_payload()
+    state["command"] = command_text
+    atomic_write_json(state_path, state)
+
+
+class SpeechRecognizer:
+    def __init__(self, config: MicrophoneConfig) -> None:
+        self.config = config
+        self._model = None
+        self._frames_per_chunk = max(200, int(self.config.sample_rate * 0.2))
+
+    def initialize(self) -> None:
+        if sd is None:
+            raise RuntimeError("sounddevice not installed. Install with: pip install sounddevice")
+        if Model is None or KaldiRecognizer is None:
+            raise RuntimeError("vosk not installed. Install with: pip install vosk")
+
+        model_path = Path(self.config.vosk_model_path).expanduser().resolve()
+        if not model_path.exists():
+            raise RuntimeError(f"Vosk model not found: {model_path}")
+
+        if SetLogLevel is not None:
+            SetLogLevel(-1)
+
+        self._model = Model(str(model_path))
+        LOGGER.info("Vosk model loaded: %s", model_path)
+
+    def _new_recognizer(self):
+        if self._model is None:
+            raise RuntimeError("Speech recognizer model is not initialized")
+        recognizer = KaldiRecognizer(self._model, float(self.config.sample_rate))
+        recognizer.SetWords(False)
+        return recognizer
+
+    def _open_stream(self):
+        device = None if self.config.device_index < 0 else self.config.device_index
+        return sd.RawInputStream(
+            samplerate=self.config.sample_rate,
+            blocksize=self._frames_per_chunk,
+            device=device,
+            channels=self.config.channels,
+            dtype=self.config.dtype,
+        )
+
+    def wait_wake_word(self, stream, stop_event: threading.Event) -> bool:
+        recognizer = self._new_recognizer()
+        wake_word = _normalize_text(self.config.wake_word).lower()
+        deadline = time.monotonic() + self.config.wake_window_s
+
+        while not stop_event.is_set() and time.monotonic() < deadline:
+            data, overflowed = stream.read(self._frames_per_chunk)
+            if overflowed:
+                LOGGER.debug("Audio overflow while waiting wake word")
+
+            if recognizer.AcceptWaveform(data):
+                full_text = _extract_text(recognizer.Result()).lower()
+                if full_text and wake_word in full_text:
+                    LOGGER.info("Wake word detected: %s", self.config.wake_word)
+                    return True
+            else:
+                partial_text = _extract_partial_text(recognizer.PartialResult()).lower()
+                if self.config.log_partial_results and partial_text:
+                    LOGGER.debug("Wake partial: %s", partial_text)
+                if partial_text and wake_word in partial_text:
+                    LOGGER.info("Wake word detected: %s", self.config.wake_word)
+                    return True
+
+        return False
+
+    def record_command(self, stream, stop_event: threading.Event) -> str:
+        recognizer = self._new_recognizer()
+        texts: list[str] = []
+        deadline = time.monotonic() + self.config.command_record_s
+
+        while not stop_event.is_set() and time.monotonic() < deadline:
+            data, overflowed = stream.read(self._frames_per_chunk)
+            if overflowed:
+                LOGGER.debug("Audio overflow while recording command")
+            if recognizer.AcceptWaveform(data):
+                full_text = _extract_text(recognizer.Result())
+                if full_text:
+                    texts.append(full_text)
+            elif self.config.log_partial_results:
+                partial_text = _extract_partial_text(recognizer.PartialResult())
+                if partial_text:
+                    LOGGER.debug("Command partial: %s", partial_text)
+
+        tail_text = _extract_text(recognizer.FinalResult())
+        if tail_text:
+            texts.append(tail_text)
+
+        return _normalize_text(" ".join(texts))
+
+    def run_loop(self, stop_event: Optional[threading.Event] = None) -> None:
+        stop_event = stop_event or threading.Event()
+        self.initialize()
+        LOGGER.info("Microphone started state_path=%s", self.config.state_path)
+
+        with self._open_stream() as stream:
+            while not stop_event.is_set():
+                if not self.wait_wake_word(stream, stop_event):
+                    stop_event.wait(self.config.poll_interval_s)
+                    continue
+
+                LOGGER.info("Command recording started (%.1fs)", self.config.command_record_s)
+                command_text = self.record_command(stream, stop_event)
+                LOGGER.info("Command recording finished")
+
+                if len(command_text) < max(0, self.config.min_command_chars):
+                    LOGGER.info("Command ignored: too short")
+                    continue
+
+                LOGGER.info("Command recognized: %s", command_text)
+                _update_state_command(self.config.state_path, command_text)
+                LOGGER.info("State updated with command")
+
+        LOGGER.info("Microphone stopped")
+
+
+def run_microphone_loop(config: MicrophoneConfig, stop_event: Optional[threading.Event] = None) -> None:
+    stop_event = stop_event or threading.Event()
+    while not stop_event.is_set():
+        recognizer = SpeechRecognizer(config)
+        try:
+            recognizer.run_loop(stop_event=stop_event)
+            return
+        except Exception as exc:
+            LOGGER.error("Microphone loop error: %s", exc)
+            stop_event.wait(config.retry_delay_s)
+
+
+def run_test_mode(config: MicrophoneConfig) -> int:
+    recognizer = SpeechRecognizer(config)
+    recognizer.initialize()
+
+    LOGGER.info("Test mode: recording %.1f seconds", config.command_record_s)
+    with recognizer._open_stream() as stream:
+        text = recognizer.record_command(stream, threading.Event())
+    LOGGER.info("Test recognized text: %s", text or "<empty>")
+    print(text)
+    return 0
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Microfone module: Vosk speech recognition")
+    parser.add_argument(
+        "--test",
+        action="store_true",
+        help="Test mode: record one command window and print recognized text",
+    )
+    parser.add_argument(
+        "--list-devices",
+        action="store_true",
+        help="Print available audio devices and exit",
+    )
+    parser.add_argument(
+        "--device-index",
+        type=int,
+        default=None,
+        help="Input device index for microphone (default uses settings)",
+    )
+    parser.add_argument(
+        "--wake-word",
+        type=str,
+        default=None,
+        help="Override wake word (default from settings)",
+    )
+    parser.add_argument(
+        "--command-seconds",
+        type=float,
+        default=None,
+        help="Override command record duration in seconds (default from settings)",
+    )
+    parser.add_argument(
+        "--model-path",
+        type=str,
+        default=None,
+        help="Override Vosk model path (default from settings or VOSK_MODEL_PATH env)",
+    )
+    return parser.parse_args()
+
+
+def build_config_from_args(args: argparse.Namespace) -> MicrophoneConfig:
+    config = MicrophoneConfig()
+    if args.device_index is not None:
+        config.device_index = args.device_index
+    if args.wake_word is not None and args.wake_word.strip():
+        config.wake_word = args.wake_word.strip()
+    if args.command_seconds is not None and args.command_seconds > 0:
+        config.command_record_s = args.command_seconds
+    if args.model_path is not None and args.model_path.strip():
+        config.vosk_model_path = args.model_path.strip()
+    return config
+
+
+def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    args = parse_args()
+
+    if args.list_devices:
+        if sd is None:
+            raise RuntimeError("sounddevice not installed. Install with: pip install sounddevice")
+        print(sd.query_devices())
+        return
+
+    config = build_config_from_args(args)
+    if args.test:
+        run_test_mode(config)
+        return
+
+    stop_event = threading.Event()
+    try:
+        run_microphone_loop(config, stop_event=stop_event)
+    except KeyboardInterrupt:
+        LOGGER.info("Microphone stopped by user")
+    finally:
+        stop_event.set()
+
+
+if __name__ == "__main__":
+    main()

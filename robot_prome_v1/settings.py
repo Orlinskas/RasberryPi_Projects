@@ -100,6 +100,7 @@ def zero_state_payload() -> Dict[str, Any]:
         "state_id": "st_000000",
         "sensor": {"obstacle_cm": None},
         "camera": {"image_path": None},
+        "command": "",
     }
 
 
@@ -188,12 +189,14 @@ class RobotState:
     state_id: str = ""
     sensor: ProximityState = field(default_factory=ProximityState)
     camera: CameraState = field(default_factory=CameraState)
+    command: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "state_id": self.state_id,
             "sensor": self.sensor.to_dict(),
             "camera": self.camera.to_dict(),
+            "command": self.command,
         }
 
     @classmethod
@@ -204,6 +207,7 @@ class RobotState:
             state_id=str(payload.get("state_id", "")),
             sensor=ProximityState.from_dict(sensor_payload if isinstance(sensor_payload, dict) else {}),
             camera=CameraState.from_dict(cam if isinstance(cam, dict) else {}),
+            command=str(payload.get("command", "")).strip(),
         )
 
 
@@ -248,8 +252,8 @@ class RobotCommand:
 # ---------------------------------------------------------------------------
 
 BRAIN_POLL_WAIT_S = 0.1
-ROBOT_TASK = "Find and play with a people"
-TARGET = "People"
+ROBOT_TASK = "Find and talk with a creator"
+TARGET = "Creator"
 
 def get_brain_system_prompt() -> str:
     allowed_actions = ", ".join(ACTIONS)
@@ -261,15 +265,16 @@ You receive:
 1. An image from the robot's front camera (what the robot sees ahead)
 2. sensor.obstacle_cm — distance to the nearest obstacle in front, in cm (null if unavailable). Safe distance: >= 50 cm. Below 50 cm — be cautious (turn away or back up).
 3. recent_actions — list of your last actions (state_id, action, reason, obstacle_cm). Use this to avoid repetitive loops.
+4. command — command from the creator. Need to be executed urgently.
 
 Output ONLY a JSON object with keys: action, reason, voice. Allowed action values: {allowed_actions}
 Do not add markdown, comments, or extra keys.
-- **voice** : a short phrase or comment on Russian from the robot about the current situation, can be humorous.
+- **voice** : a short phrase or comment on Russian about the current situation, can be terrifying.
 
 **JSON Example:**
 {{
   "action": "LIGHT_OFF",
-  "reason": "No image available, sensor indicates no obstacles, safe state",
+  "reason": "No image available",
   "voice": "Some phrase on Russian"
 }}
 
@@ -389,4 +394,39 @@ class MemoryConfig:
     command_path: Path = COMMAND_PATH
     memory_path: Path = MEMORY_PATH
     max_entries: int = MEMORY_MAX_ENTRIES
+
+
+# ---------------------------------------------------------------------------
+# Microphone
+# ---------------------------------------------------------------------------
+
+MICROPHONE_POLL_WAIT_S = 0.05
+MICROPHONE_SAMPLE_RATE = 16000
+MICROPHONE_CHANNELS = 1
+MICROPHONE_DTYPE = "int16"
+MICROPHONE_WAKE_WORD = "робот"
+MICROPHONE_WAKE_WINDOW_S = 1.0
+MICROPHONE_COMMAND_RECORD_S = 4.0
+MICROPHONE_MIN_COMMAND_CHARS = 2
+MICROPHONE_DEVICE_INDEX = -1  # -1 means default input device
+MICROPHONE_VOSK_MODEL_PATH = os.getenv("VOSK_MODEL_PATH", str(ROOT / "models" / "vosk-ru"))
+MICROPHONE_LOG_PARTIAL_RESULTS = False
+MICROPHONE_RETRY_DELAY_S = 5.0
+
+
+@dataclass
+class MicrophoneConfig:
+    state_path: Path = STATE_PATH
+    sample_rate: int = MICROPHONE_SAMPLE_RATE
+    channels: int = MICROPHONE_CHANNELS
+    dtype: str = MICROPHONE_DTYPE
+    wake_word: str = MICROPHONE_WAKE_WORD
+    wake_window_s: float = MICROPHONE_WAKE_WINDOW_S
+    command_record_s: float = MICROPHONE_COMMAND_RECORD_S
+    poll_interval_s: float = MICROPHONE_POLL_WAIT_S
+    min_command_chars: int = MICROPHONE_MIN_COMMAND_CHARS
+    device_index: int = MICROPHONE_DEVICE_INDEX
+    vosk_model_path: str = MICROPHONE_VOSK_MODEL_PATH
+    log_partial_results: bool = MICROPHONE_LOG_PARTIAL_RESULTS
+    retry_delay_s: float = MICROPHONE_RETRY_DELAY_S
 

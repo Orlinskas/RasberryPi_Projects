@@ -16,9 +16,11 @@ from pathlib import Path
 from brain import BrainConfig, run_brain_loop
 from controller import interactive_main, run_controller_loop
 from memory import MemoryConfig, run_memory_loop
+from microphone import run_microphone_loop
 from voice import run_voice_loop
 from settings import (
     CONTROLLER_POLL_INTERVAL_S,
+    MicrophoneConfig,
     STREAM_DEFAULT_PORT,
     VisionConfig,
     atomic_write_json,
@@ -96,6 +98,9 @@ def main() -> None:
         command_path=command_path,
         memory_path=memory_path,
     )
+    microphone_config = MicrophoneConfig(
+        state_path=state_path,
+    )
 
     threads = [
         threading.Thread(
@@ -136,6 +141,12 @@ def main() -> None:
                 target=run_voice_loop,
                 args=(command_path, CONTROLLER_POLL_INTERVAL_S, stop_event),
                 name="voice",
+                daemon=True,
+            ),
+            threading.Thread(
+                target=run_microphone_loop,
+                args=(microphone_config, stop_event),
+                name="microphone",
                 daemon=True,
             ),
         ])

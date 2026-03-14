@@ -90,14 +90,16 @@ flowchart TD
 
 ## What each module does
 
-| Module | Description |
-|--------|-------------|
-| `main.py` | Starts all threads and shuts down the system cleanly |
-| `settings.py` | Shared module — settings, constants, prompts, models, states, safe JSON I/O |
-| `vision.py` | Captures camera frame (OpenCV) and writes `state.json` |
-| `brain.py` | Reads `state.json` and `memory.json`, makes decisions via LLM (Ollama), writes `command.json` |
+| Module          | Description |
+|-----------------|-------------|
+| `main.py`       | Starts all threads and shuts down the system cleanly |
+| `settings.py`   | Shared module — settings, constants, prompts, models, states, safe JSON I/O |
+| `vision.py`     | Captures camera frame (OpenCV) and writes `state.json` |
+| `brain.py`      | Reads `state.json` and `memory.json`, makes decisions via LLM (Ollama), writes `command.json` |
 | `controller.py` | Executes commands from `command.json` on motors |
-| `memory.py` | Stores last n commands for decision-making in `brain.py` |
+| `memory.py`     | Stores last n commands for decision-making in `brain.py` |
+| `microphone.py` | Listens USB microphone, detects wake word, writes recognized command to `state.json.command` |
+| `voice.py`      | Speaks phrases from `command.json.voice` using local TTS |
 
 ---
 
@@ -111,6 +113,8 @@ Project requires Python 3.8 or higher.
 
 - opencv-python>=4.8.0
 - RPi.GPIO>=0.7.0
+- sounddevice>=0.4.6
+- vosk>=0.3.45
 
 ### 3. Ollama (LLM for brain)
 
@@ -136,6 +140,14 @@ On Raspberry Pi add GPIO and install dependencies:
 
 ```bash
 pip install RPi.GPIO
+```
+
+### 4. Voice recognition model (Vosk, Russian)
+
+`microphone.py` uses offline Vosk STT. Download any Russian model from [Vosk models](https://alphacephei.com/vosk/models), unpack it on Raspberry Pi, then point `VOSK_MODEL_PATH` to that folder:
+
+```bash
+export VOSK_MODEL_PATH=/home/pi/vosk-model-small-ru-0.22
 ```
 
 ### 5. Running the project
@@ -165,6 +177,22 @@ python3 main.py --mode manual
 
 ```bash
 python3 main.py --verbose
+```
+
+### Microphone module (standalone)
+
+Run as a separate independent process:
+
+```bash
+python3 microphone.py
+```
+
+Useful options:
+
+```bash
+python3 microphone.py --list-devices
+python3 microphone.py --test
+python3 microphone.py --device-index 2
 ```
 
 ---
