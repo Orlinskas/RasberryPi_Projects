@@ -188,10 +188,6 @@ sudo apt install -y \
 python -m pip install --break-system-packages --upgrade pip
 python -m pip install --break-system-packages sounddevice vosk
 ```
-или
-```bash
-bash ~/robot_prome_v1/recover_env.sh
-```
 
 Укажите путь к русской модели Vosk (обязательно для `microphone.py`):
 

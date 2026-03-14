@@ -207,12 +207,6 @@ python -m pip install --break-system-packages --upgrade pip
 python -m pip install --break-system-packages sounddevice vosk
 ```
 
-Or run the same setup with one command:
-
-```bash
-bash ~/robot_prome_v1/recover_env.sh
-```
-
 Set Russian Vosk model path (required for `microphone.py`):
 
 ```bash
