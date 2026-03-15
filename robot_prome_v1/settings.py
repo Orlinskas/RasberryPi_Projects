@@ -259,61 +259,62 @@ def get_brain_system_prompt() -> str:
     allowed_actions = ", ".join(ACTIONS)
     return f"""You are a decision engine for a small (40x40 cm) robot.
 
-**Task:** {ROBOT_TASK}.
+Task: {ROBOT_TASK}.
 
 You receive:
-1. An image from the robot's front camera (what the robot sees ahead)
-2. sensor.obstacle_cm — distance to the nearest obstacle in front, in cm. Safe distance: >= 50 cm. Below 50 cm — be cautious (turn away or back up).
-3. recent_actions — list of your last actions (state_id, action, reason, obstacle_cm, voice). Use this to avoid repetitive loops.
-4. command — command from the creator. Need to be executed urgently.
+1) image: front camera image (may be missing)
+2) sensor.obstacle_cm: distance to nearest front obstacle in cm (can be null)
+3) recent_actions: recent history (state_id, action, reason, obstacle_cm, voice)
+4) command: text command from the creator (can be empty)
 
-Output ONLY a JSON object with keys: action, reason, voice. Allowed action values: {allowed_actions}
-Do not add markdown, comments, or extra keys.
+Return ONLY one valid JSON object with keys:
+- action
+- reason
+- voice
 
-**JSON Example:**
+Allowed action values: {allowed_actions}
+
+Strict output rules:
+- No markdown
+- No comments
+- No extra keys
+- No text before or after JSON
+
+JSON example:
 {{
   "action": "LIGHT_OFF",
-  "reason": "Describe why you did something shortly",
-  "voice": "A phrase or comment on Russian about the current situation. Can be answer for command"
+  "reason": "short reason",
+  "voice": "Короткая фраза по-русски"
 }}
 
-## Commands
+Behavior rules:
+1) Safety first:
+- If obstacle_cm is not null and < 50: avoid collision (TURN_* or STEP_BACKWARD).
+- If obstacle appears in image, act cautiously even if the sensor is noisy.
 
-**Movement (drives a short distance then stops):**
-- STEP_FORWARD — move forward
-- STEP_BACKWARD — move backward
+2) Command priority:
+- If command is non-empty, prioritize it immediately.
+- Interpret command intent and choose the closest allowed action.
 
-**Rotation (turns in place):**
-- TURN_LEFT_15, TURN_RIGHT_15 — small correction (~15°)
-- TURN_LEFT_45, TURN_RIGHT_45 — larger turn (~45°)
+3) Target seeking:
+- If obstacle_cm >= 50 or obstacle_cm is null, seek {TARGET}.
+- Keep {TARGET} centered before moving forward.
+- If {TARGET} is left -> TURN_LEFT_15 or TURN_LEFT_45
+- If {TARGET} is right -> TURN_RIGHT_15 or TURN_RIGHT_45
+- If {TARGET} is centered -> STEP_FORWARD
+- If {TARGET} is not visible -> slow search turn (TURN_LEFT_15 or TURN_RIGHT_15)
 
-**Other:**
-- LIGHT_ON — turn light on
-- LIGHT_OFF — turn light off
-- PLAY — celebrate: use when {TARGET} is found and close, or to express joy
+4) Voice generation:
+- voice must be in Russian.
+- Keep it short (max ~12 words).
+- Avoid repeating exactly the same recent voice phrase unless necessary.
 
-## Rules
+5) Loop avoidance:
+- Use recent_actions to avoid repeating the same action pattern many times in a row.
 
-1. **Safety and navigation:**
-   - Combine the image and sensor.obstacle_cm to assess the situation. Obstacles in the image (wall, furniture, chair, legs, person) and low distance readings both suggest caution — turn away or back up.
-   - Obstacle on left → consider TURN_RIGHT. Obstacle on right → consider TURN_LEFT. Obstacle center → TURN_LEFT or TURN_RIGHT.
-
-2. **Target seeking (when obstacle_cm >= 50):**
-   - Goal: keep the {TARGET} in the center of the image. If the {TARGET} is offset — turn towards it first. Do not drive forward past a {TARGET} that is off-center; you will miss it.
-   - {TARGET} on left side → TURN_LEFT_15 or TURN_LEFT_45 (turn until it moves toward center)
-   - {TARGET} at center → STEP_FORWARD
-   - {TARGET} on right side → TURN_RIGHT_15 or TURN_RIGHT_45 (turn until it moves toward center)
-   - No {TARGET} visible → slow search turn (TURN_LEFT_15 or TURN_RIGHT_15) to find it
-
-3. **Use recent_actions:** You receive recent_actions (last actions taken). Use this history to avoid loops. Avoid repeating exactly the same **voice** phrase from recent_actions unless it is truly necessary.
-
-4. **Command is priority:**
-    - When command received do it immediately
-
+6) Thinking: 
+- Keep reasoning short.
 """
-   # - {TARGET} found and close (obstacle_cm < 30 or {TARGET} fills center) → PLAY to celebrate
-
-# 4. **Thinking** Keep reasoning short.
 
 @dataclass
 class BrainConfig:
@@ -376,7 +377,7 @@ class VisionConfig:
 CONTROLLER_POLL_INTERVAL_S = 0.05
 PLAY_PHASE_DURATION_S = 0.2
 PLAY_SPEED = 50
-PLAY_CYCLES = 6
+PLAY_CYCLES = 4
 ERROR_BLINK_ON_S = 0.15
 ERROR_BLINK_OFF_S = 0.15
 
@@ -386,7 +387,7 @@ ERROR_BLINK_OFF_S = 0.15
 # ---------------------------------------------------------------------------
 
 MEMORY_POLL_WAIT_S = 0.1
-MEMORY_MAX_ENTRIES = 7
+MEMORY_MAX_ENTRIES = 4
 
 
 @dataclass
@@ -400,14 +401,14 @@ class MemoryConfig:
 # ---------------------------------------------------------------------------
 # Audio playback (voice, microphone)
 # ---------------------------------------------------------------------------
-AUDIO_PLAYBACK_AMPLITUDE = 40
+AUDIO_PLAYBACK_AMPLITUDE = 200
 VOICE_MUTE_EVENT = threading.Event()
 
 # ---------------------------------------------------------------------------
 # Microphone
 # ---------------------------------------------------------------------------
 
-MICROPHONE_POLL_WAIT_S = 0.05
+MICROPHONE_POLL_WAIT_S = 0.1
 MICROPHONE_SAMPLE_RATE = 44100
 MICROPHONE_CHANNELS = 1
 MICROPHONE_DTYPE = "int16"
@@ -419,6 +420,7 @@ MICROPHONE_DEVICE_INDEX = 1  # -1 means default input device
 MICROPHONE_VOSK_MODEL_PATH = os.getenv("VOSK_MODEL_PATH", str(ROOT / "vosk-model-small-ru-0.22"))
 MICROPHONE_LOG_PARTIAL_RESULTS = False
 MICROPHONE_RETRY_DELAY_S = 5.0
+
 MICROPHONE_TEST_AUDIO_PLAY_TIMEOUT_S = 10.0
 MICROPHONE_TEST_START_PROMPT = "Записываю"
 MICROPHONE_TEST_DONE_STT_PROMPT = "Запись завершена"
