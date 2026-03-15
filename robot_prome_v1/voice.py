@@ -18,7 +18,7 @@ import threading
 from pathlib import Path
 from typing import Optional, Union
 
-from settings import read_json
+from settings import AUDIO_PLAYBACK_AMPLITUDE, read_json
 
 LOGGER = logging.getLogger("voice")
 
@@ -65,9 +65,9 @@ def _play_phrase_espeak(phrase: str) -> bool:
             _ESPEAK_WARNED = True
         return False
     lang = (os.environ.get("VOICE_LANG") or VOICE_LANG or "").strip()
-    cmd = [binary, "-a", "200", "-s", str(VOICE_SPEED_WPM), phrase]
+    cmd = [binary, "-a", str(AUDIO_PLAYBACK_AMPLITUDE), "-s", str(VOICE_SPEED_WPM), phrase]
     if lang:
-        cmd = [binary, "-v", lang, "-a", "200", "-s", str(VOICE_SPEED_WPM), phrase]
+        cmd = [binary, "-v", lang, "-a", str(AUDIO_PLAYBACK_AMPLITUDE), "-s", str(VOICE_SPEED_WPM), phrase]
     try:
         subprocess.run(cmd, timeout=VOICE_TIMEOUT_S, capture_output=True, check=False)
         return True
