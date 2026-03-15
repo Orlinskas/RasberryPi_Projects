@@ -264,12 +264,12 @@ def get_brain_system_prompt() -> str:
 You receive:
 1. An image from the robot's front camera (what the robot sees ahead)
 2. sensor.obstacle_cm — distance to the nearest obstacle in front, in cm (null if unavailable). Safe distance: >= 50 cm. Below 50 cm — be cautious (turn away or back up).
-3. recent_actions — list of your last actions (state_id, action, reason, obstacle_cm). Use this to avoid repetitive loops.
+3. recent_actions — list of your last actions (state_id, action, reason, obstacle_cm, voice). Use this to avoid repetitive loops.
 4. command — command from the creator. Need to be executed urgently.
 
 Output ONLY a JSON object with keys: action, reason, voice. Allowed action values: {allowed_actions}
 Do not add markdown, comments, or extra keys.
-- **voice** : a short phrase or comment on Russian about the current situation, can be terrifying.
+- **voice** : a short phrase or comment on Russian about the current situation.
 
 **JSON Example:**
 {{
@@ -305,13 +305,12 @@ Do not add markdown, comments, or extra keys.
    - {TARGET} at center → STEP_FORWARD
    - {TARGET} on right side → TURN_RIGHT_15 or TURN_RIGHT_45 (turn until it moves toward center)
    - No {TARGET} visible → slow search turn (TURN_LEFT_15 or TURN_RIGHT_15) to find it
-   - {TARGET} found and close (obstacle_cm < 30 or {TARGET} fills center) → PLAY to celebrate
 
-3. **Light:** If the image looks dark (low lighting, poorly lit room, shadows) — use LIGHT_ON to illuminate the scene. You can also use LIGHT_ON to draw attention to nearby {TARGET}. Use LIGHT_OFF when there is enough light. Avoid getting stuck in light-only loops (alternating LIGHT_ON/LIGHT_OFF repeatedly without movement).
+3. **Use recent_actions:** You receive recent_actions (last actions taken). Use this history to avoid loops. Avoid repeating exactly the same **voice** phrase from recent_actions unless it is truly necessary.
 
-4. **Use recent_actions:** You receive recent_actions (last actions taken). Use this history to avoid loops.
+4. **Thinking** Keep reasoning short."""
 
-5. **Thinking** Keep reasoning short."""
+   # - {TARGET} found and close (obstacle_cm < 30 or {TARGET} fills center) → PLAY to celebrate
 
 
 @dataclass
@@ -399,7 +398,7 @@ class MemoryConfig:
 # ---------------------------------------------------------------------------
 # Audio playback (voice, microphone)
 # ---------------------------------------------------------------------------
-AUDIO_PLAYBACK_AMPLITUDE = 20
+AUDIO_PLAYBACK_AMPLITUDE = 40
 
 # ---------------------------------------------------------------------------
 # Microphone
@@ -421,6 +420,7 @@ MICROPHONE_TEST_AUDIO_PLAY_TIMEOUT_S = 10.0
 MICROPHONE_TEST_START_PROMPT = "Записываю"
 MICROPHONE_TEST_DONE_STT_PROMPT = "Запись завершена"
 MICROPHONE_TEST_DONE_AUDIO_PROMPT = "Запись завершена. Проигрываю"
+MICROPHONE_TRIGGER_ACK_PROMPT = "Слушаю и выполняю"
 
 
 @dataclass
@@ -442,4 +442,5 @@ class MicrophoneConfig:
     test_start_prompt: str = MICROPHONE_TEST_START_PROMPT
     test_done_stt_prompt: str = MICROPHONE_TEST_DONE_STT_PROMPT
     test_done_audio_prompt: str = MICROPHONE_TEST_DONE_AUDIO_PROMPT
+    trigger_ack_prompt: str = MICROPHONE_TRIGGER_ACK_PROMPT
 

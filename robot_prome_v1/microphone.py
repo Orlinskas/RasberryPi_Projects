@@ -111,6 +111,14 @@ def _speak_prompt(phrase: str) -> None:
         LOGGER.warning("Prompt playback failed: %s", exc)
 
 
+def _log_received_command(source: str, command_text: str) -> None:
+    text = _normalize_text(command_text)
+    if not text:
+        LOGGER.info("[%s] Robot command received: <empty>", source)
+        return
+    LOGGER.info("[%s] Robot command received: %s", source, text)
+
+
 class SpeechRecognizer:
     def __init__(self, config: MicrophoneConfig) -> None:
         self.config = config
@@ -253,19 +261,24 @@ class SpeechRecognizer:
                     stop_event.wait(self.config.poll_interval_s)
                     continue
 
-                LOGGER.info("Command recording started (%.1fs)", self.config.command_record_s)
-                command_text = self.record_command(stream, stop_event)
-                LOGGER.info("Command recording finished")
-
-                if len(command_text) < max(0, self.config.min_command_chars):
-                    LOGGER.info("Command ignored: too short")
-                    continue
-
-                LOGGER.info("Command recognized: %s", command_text)
-                _update_state_command(self.config.state_path, command_text)
-                LOGGER.info("State updated with command")
+                self.capture_command_once(stream, stop_event)
 
         LOGGER.info("Microphone stopped")
+
+    def capture_command_once(self, stream, stop_event: threading.Event) -> Optional[str]:
+        _speak_prompt(self.config.trigger_ack_prompt)
+        LOGGER.info("Command recording started (%.1fs)", self.config.command_record_s)
+        command_text = self.record_command(stream, stop_event)
+        LOGGER.info("Command recording finished")
+
+        if len(command_text) < max(0, self.config.min_command_chars):
+            LOGGER.info("Command ignored: too short")
+            return None
+
+        _log_received_command("loop", command_text)
+        _update_state_command(self.config.state_path, command_text)
+        LOGGER.info("State updated with command")
+        return command_text
 
 
 def run_microphone_loop(config: MicrophoneConfig, stop_event: Optional[threading.Event] = None) -> None:
@@ -289,9 +302,27 @@ def run_test_mode(config: MicrophoneConfig) -> int:
     with recognizer._open_stream() as stream:
         text = recognizer.record_command(stream, threading.Event())
     _speak_prompt(config.test_done_stt_prompt)
+    _log_received_command("test-stt", text)
     LOGGER.info("Test recognized text: %s", text or "<empty>")
     print(text)
     return 0
+
+
+def run_test_scenario_mode(config: MicrophoneConfig) -> int:
+    recognizer = SpeechRecognizer(config)
+    recognizer.initialize()
+    LOGGER.info("Scenario test: waiting wake word '%s'", config.wake_word)
+
+    with recognizer._open_stream() as stream:
+        stop_event = threading.Event()
+        while True:
+            if recognizer.wait_wake_word(stream, stop_event):
+                command_text = recognizer.capture_command_once(stream, stop_event)
+                _log_received_command("test-scenario", command_text or "")
+                LOGGER.info("Scenario test completed")
+                print(command_text or "")
+                return 0 if command_text else 1
+            stop_event.wait(config.poll_interval_s)
 
 
 def run_test_audio_mode(config: MicrophoneConfig) -> int:
@@ -348,9 +379,9 @@ def parse_args() -> argparse.Namespace:
         "--test",
         nargs="?",
         const="stt",
-        choices=["stt", "audio"],
+        choices=["stt", "audio", "scenario"],
         metavar="MODE",
-        help="Test mode: --test or --test stt for speech-to-text, --test audio for microphone-to-speaker loopback",
+        help="Test mode: stt (speech-to-text), audio (record and playback), scenario (wake word -> phrase -> command -> state write)",
     )
     parser.add_argument(
         "--list-devices",
@@ -411,6 +442,8 @@ def main() -> None:
     if args.test:
         if args.test == "audio":
             run_test_audio_mode(config)
+        elif args.test == "scenario":
+            run_test_scenario_mode(config)
         else:
             run_test_mode(config)
         return

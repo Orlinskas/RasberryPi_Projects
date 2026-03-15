@@ -401,8 +401,12 @@ def _make_stream_handler(frame_buffer: FrameBuffer) -> type:
         def _serve_index(self) -> None:
             html = (
                 b"<!DOCTYPE html><html><head><meta charset='utf-8'>"
-                b"<title>Robot Camera</title></head><body style='margin:0;background:#111'>"
-                b"<img src='/stream' style='display:block;max-width:100%;height:auto'>"
+                b"<title>Robot Camera</title>"
+                b"<style>"
+                b"html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#111}"
+                b"img{position:fixed;top:0;left:0;width:100vw;height:100vh;object-fit:cover;display:block}"
+                b"</style></head><body>"
+                b"<img src='/stream' alt='Camera stream'>"
                 b"</body></html>"
             )
             self.send_response(200)

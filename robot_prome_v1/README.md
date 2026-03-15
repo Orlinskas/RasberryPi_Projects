@@ -243,6 +243,7 @@ Useful options:
 python microphone.py --list-devices
 python microphone.py --test
 python microphone.py --test audio
+python microphone.py --test scenario
 python microphone.py --device-index 2
 ```
 

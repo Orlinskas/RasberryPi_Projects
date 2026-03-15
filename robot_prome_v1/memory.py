@@ -86,6 +86,18 @@ def run_memory_loop(config: MemoryConfig, stop_event: Optional[threading.Event] 
         state_id = str(raw_command.get("based_on_state_id", ""))
         action = str(raw_command.get("action", "LIGHT_OFF"))
         reason = str(raw_command.get("reason", ""))
+        voice_raw = raw_command.get("voice")
+        voice = str(voice_raw).strip() if voice_raw is not None else ""
+        voice = voice or None
+
+        command_payload: Dict[str, Any] = {
+            "command_id": command_id,
+            "based_on_state_id": state_id,
+            "action": action,
+            "reason": reason,
+        }
+        if voice is not None:
+            command_payload["voice"] = voice
 
         entry = {
             "state_id": state_id,
@@ -93,6 +105,8 @@ def run_memory_loop(config: MemoryConfig, stop_event: Optional[threading.Event] 
             "action": action,
             "reason": reason,
             "obstacle_cm": obstacle_cm,
+            "voice": voice,
+            "command": command_payload,
         }
         _append_entry(config.memory_path, entry, config.max_entries)
         last_command_id = command_id
