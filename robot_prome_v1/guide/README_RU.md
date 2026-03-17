@@ -79,7 +79,7 @@ flowchart TD
 
 - `main.py` — поднимает все потоки и корректно завершает систему
 - `settings.py` — (shared module) настройки, константы, промпты, модели, стейты и безопасный JSON I/O
-- `vision.py` — захватывает кадр камеры (OpenCV) и пишет `state.json`
+- `vision.py` — захватывает кадр камеры (Picamera2/OpenCV) и пишет `state.json`
 - `brain.py` — читает `state.json` и `memory.json`, принимает решение через LLM (via Ollama), пишет `command.json`
 - `controller.py` — исполняет команду из `command.json` на моторах
 - `memory.py` — хранит последние n-команд для принятия решений в `brain.py`
@@ -97,6 +97,7 @@ flowchart TD
 Установите системные пакеты на Raspberry Pi:
 
 - python3-opencv
+- python3-picamera2 (для Raspberry Pi Camera Module 3 через CSI)
 - python3-rpi-lgpio (совместимый GPIO backend для Raspberry Pi 5)
 - sounddevice (устанавливается через pip)
 - vosk (устанавливается через pip)
@@ -123,7 +124,7 @@ ollama list
 На Raspberry Pi добавьте GPIO и установите зависимости:
 
 ```bash
-sudo apt install -y python3-rpi-lgpio
+sudo apt install -y python3-rpi-lgpio python3-picamera2
 ```
 
 ### 4. Модель распознавания речи (Vosk, русский)
@@ -142,6 +143,19 @@ export VOSK_MODEL_PATH=/home/pi/vosk-model-small-ru-0.22
 
 ```bash
 cd robot_prome_v1
+python main.py
+```
+
+Raspberry Pi Camera Module 3 работает по умолчанию (дополнительные env-переменные не нужны):
+
+```bash
+python main.py
+```
+
+Для USB-камеры можно явно включить OpenCV backend:
+
+```bash
+export CAMERA_BACKEND=opencv
 python main.py
 ```
 
@@ -176,6 +190,7 @@ cd ~/robot_prome_v1
 sudo apt update
 sudo apt install -y \
   python3-opencv \
+  python3-picamera2 \
   python3-rpi-lgpio \
   python3-pip \
   espeak-ng \
@@ -233,7 +248,7 @@ python microphone.py --device-index 2
 
 ## Видеопоток камеры
 
-При запуске с камерой (OpenCV) автоматически поднимается MJPEG-сервер. Откройте в браузере URL, который выводится при старте:
+При запуске с камерой (Picamera2/OpenCV) автоматически поднимается MJPEG-сервер. Откройте в браузере URL, который выводится при старте:
 
 ```
   ========================================================
@@ -245,6 +260,7 @@ python microphone.py --device-index 2
 
 - Порт по умолчанию: `8765`. Можно изменить: `python main.py --stream-port 9000`
 - Поток использует кадры из основного vision-цикла и не влияет на работу робота
+- Выбор backend: `CAMERA_BACKEND=picamera2` (по умолчанию), `opencv` или `auto`
 
 ## Друзьям
 

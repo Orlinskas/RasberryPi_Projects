@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Deque, Optional, Protocol, Tuple
 
 from settings import (
+    CAMERA_BACKEND,
     CAMERA_FPS,
     CAMERA_HEIGHT,
     CAMERA_INDEX,
@@ -61,6 +62,11 @@ try:
     import cv2
 except ImportError:
     cv2 = None
+
+try:
+    from picamera2 import Picamera2
+except ImportError:
+    Picamera2 = None
 
 
 class FrameBuffer:
@@ -248,6 +254,255 @@ class MockCameraDetector:
         pass
 
 
+class Picamera2StreamCapture:
+    """Continuously captures frames via Picamera2 for low-latency MJPEG stream."""
+
+    def __init__(
+        self,
+        frame_buffer: FrameBuffer,
+        width: int = CAMERA_WIDTH,
+        height: int = CAMERA_HEIGHT,
+        capture_fps: float = CAMERA_FPS,
+        stream_fps: float = STREAM_FPS,
+        jpeg_quality: int = STREAM_JPEG_QUALITY,
+    ) -> None:
+        self._frame_buffer = frame_buffer
+        self._width = width
+        self._height = height
+        self._capture_fps = capture_fps
+        self._stream_fps = stream_fps
+        self._jpeg_quality = max(50, min(95, jpeg_quality))
+        self._interval = 1.0 / max(1.0, stream_fps)
+        self._camera: Optional[Any] = None
+        self._stop = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+        self._raw_lock = threading.Lock()
+        self._last_raw: Optional[Any] = None
+        self._encode_params = [int(cv2.IMWRITE_JPEG_QUALITY), self._jpeg_quality] if cv2 else []
+
+    def _capture_loop(self) -> None:
+        if cv2 is None or self._camera is None:
+            return
+        while not self._stop.is_set():
+            try:
+                frame_rgb = self._camera.capture_array()
+                frame = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+            except Exception as exc:
+                LOGGER.warning("Picamera2 stream frame capture failed: %s", exc)
+                self._stop.wait(self._interval)
+                continue
+            with self._raw_lock:
+                self._last_raw = frame.copy()
+            _, jpeg = cv2.imencode(".jpg", frame, self._encode_params)
+            if jpeg is not None:
+                self._frame_buffer.put(jpeg.tobytes())
+            self._stop.wait(self._interval)
+
+    def start(self) -> bool:
+        if Picamera2 is None or cv2 is None:
+            return False
+        try:
+            self._camera = Picamera2()
+            cfg = self._camera.create_video_configuration(
+                main={"size": (self._width, self._height), "format": "RGB888"}
+            )
+            self._camera.configure(cfg)
+            self._camera.start()
+            frame_us = int(1_000_000 / max(1.0, self._capture_fps))
+            try:
+                self._camera.set_controls({"FrameDurationLimits": (frame_us, frame_us)})
+            except Exception:
+                pass
+            time.sleep(CAMERA_WARMUP_S)
+        except Exception:
+            if self._camera is not None:
+                try:
+                    self._camera.stop()
+                except Exception:
+                    pass
+                try:
+                    self._camera.close()
+                except Exception:
+                    pass
+            self._camera = None
+            return False
+
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._capture_loop, name="stream-capture", daemon=True)
+        self._thread.start()
+        return True
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=2.0)
+            self._thread = None
+        if self._camera is not None:
+            try:
+                self._camera.stop()
+            except Exception:
+                pass
+            try:
+                self._camera.close()
+            except Exception:
+                pass
+            self._camera = None
+
+    def get_latest_raw(self) -> Optional[Any]:
+        with self._raw_lock:
+            return self._last_raw.copy() if self._last_raw is not None else None
+
+
+class Picamera2CameraDetector:
+    def __init__(
+        self,
+        capture_dir: Path,
+        width: int = CAMERA_WIDTH,
+        height: int = CAMERA_HEIGHT,
+        fps: float = CAMERA_FPS,
+        keep_last: int = CAPTURE_KEEP_LAST,
+        frame_buffer: Optional[FrameBuffer] = None,
+    ) -> None:
+        self._capture_dir = capture_dir
+        self._frame_buffer = frame_buffer
+        self._width = width
+        self._height = height
+        self._fps = fps
+        self._keep_last = max(1, int(keep_last))
+        self._camera: Optional[Any] = None
+        self._stream_capture: Optional[Picamera2StreamCapture] = None
+        self._stream_capture_failed = False
+        self._open_warning_logged = False
+
+    def _capture_from_camera(self) -> Optional[Any]:
+        if cv2 is None or self._camera is None:
+            return None
+        try:
+            frame_rgb = self._camera.capture_array()
+            return cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+        except Exception as exc:
+            LOGGER.warning("Picamera2 frame read failed: %s", exc)
+            return None
+
+    def _ensure_open(self) -> bool:
+        if Picamera2 is None:
+            if not self._open_warning_logged:
+                LOGGER.warning("Picamera2 unavailable, camera disabled")
+                self._open_warning_logged = True
+            return False
+        if cv2 is None:
+            if not self._open_warning_logged:
+                LOGGER.warning("OpenCV unavailable, camera disabled")
+                self._open_warning_logged = True
+            return False
+
+        if self._frame_buffer is not None and self._stream_capture is None and not self._stream_capture_failed:
+            self._stream_capture = Picamera2StreamCapture(
+                frame_buffer=self._frame_buffer,
+                width=self._width,
+                height=self._height,
+                capture_fps=self._fps,
+                stream_fps=STREAM_FPS,
+                jpeg_quality=STREAM_JPEG_QUALITY,
+            )
+            if not self._stream_capture.start():
+                LOGGER.warning("Picamera2 stream capture failed, falling back to on-demand capture")
+                self._stream_capture = None
+                self._stream_capture_failed = True
+            else:
+                LOGGER.info("Picamera2 stream capture started at %.0f fps", STREAM_FPS)
+
+        if self._stream_capture is not None:
+            return True
+
+        if self._camera is not None:
+            return True
+
+        self.close()
+        try:
+            self._camera = Picamera2()
+            cfg = self._camera.create_video_configuration(
+                main={"size": (self._width, self._height), "format": "RGB888"}
+            )
+            self._camera.configure(cfg)
+            self._camera.start()
+            frame_us = int(1_000_000 / max(1.0, self._fps))
+            try:
+                self._camera.set_controls({"FrameDurationLimits": (frame_us, frame_us)})
+            except Exception:
+                pass
+            time.sleep(CAMERA_WARMUP_S)
+        except Exception as exc:
+            if self._camera is not None:
+                try:
+                    self._camera.stop()
+                except Exception:
+                    pass
+                try:
+                    self._camera.close()
+                except Exception:
+                    pass
+            self._camera = None
+            if not self._open_warning_logged:
+                LOGGER.warning("Picamera2 open failed: %s", exc)
+                self._open_warning_logged = True
+            return False
+
+        self._open_warning_logged = False
+        return True
+
+    def read_image_path(self, state_id: str) -> Optional[str]:
+        if not self._ensure_open():
+            return None
+
+        frame = None
+        if self._stream_capture is not None:
+            for _ in range(int(STREAM_FPS * 1.5)):
+                frame = self._stream_capture.get_latest_raw()
+                if frame is not None:
+                    break
+                time.sleep(1.0 / max(1.0, STREAM_FPS))
+        else:
+            frame = self._capture_from_camera()
+
+        if frame is None:
+            LOGGER.warning("No frame available from Picamera2")
+            return None
+
+        if self._frame_buffer is not None and self._stream_capture is None and cv2 is not None:
+            _, jpeg = cv2.imencode(".jpg", frame)
+            if jpeg is not None:
+                self._frame_buffer.put(jpeg.tobytes())
+
+        self._capture_dir.mkdir(parents=True, exist_ok=True)
+        image_path = self._capture_dir / f"{state_id}.jpg"
+        if cv2 is None or not cv2.imwrite(str(image_path), frame):
+            LOGGER.warning("Frame save failed: %s", image_path)
+            return None
+
+        _prune_capture_images(self._capture_dir, keep_last=self._keep_last)
+        return str(image_path.resolve())
+
+    def start_stream_if_enabled(self) -> None:
+        if self._frame_buffer is not None:
+            self._ensure_open()
+
+    def close(self) -> None:
+        if self._stream_capture is not None:
+            self._stream_capture.stop()
+            self._stream_capture = None
+        if self._camera is not None:
+            try:
+                self._camera.stop()
+            except Exception:
+                pass
+            try:
+                self._camera.close()
+            except Exception:
+                pass
+            self._camera = None
+
+
 class OpenCVCameraDetector:
     def __init__(
         self,
@@ -309,7 +564,7 @@ class OpenCVCameraDetector:
         if not cap.isOpened():
             cap.release()
             if not self._open_warning_logged:
-                LOGGER.warning("USB camera open failed index=%s", self._camera_index)
+                LOGGER.warning("OpenCV camera open failed index=%s", self._camera_index)
                 self._open_warning_logged = True
             return False
 
@@ -336,7 +591,7 @@ class OpenCVCameraDetector:
             assert self._cap is not None
             ok, frame = self._cap.read()
             if not ok or frame is None:
-                LOGGER.warning("USB camera frame read failed")
+                LOGGER.warning("OpenCV camera frame read failed")
                 return None
 
         if frame is None:
@@ -470,19 +725,38 @@ def run_stream_server(
     )
 
 
+def _resolve_camera_backend() -> str:
+    backend = (CAMERA_BACKEND or "auto").strip().lower()
+    if backend in {"opencv", "picamera2"}:
+        return backend
+    if backend != "auto":
+        LOGGER.warning("Unknown CAMERA_BACKEND=%r; using auto", backend)
+    if Picamera2 is not None:
+        return "picamera2"
+    return "opencv"
+
+
 def build_sensors(
     config: VisionConfig,
     frame_buffer: Optional[FrameBuffer] = None,
 ) -> Tuple[ProximitySensor, CameraDetector]:
-    if cv2 is None:
-        LOGGER.error("cv2 not found, using MockCameraDetector")
-        camera: CameraDetector = MockCameraDetector()
-    else:
+    camera_backend = _resolve_camera_backend()
+    LOGGER.info("Camera backend selected: %s", camera_backend)
+    if camera_backend == "picamera2" and Picamera2 is not None:
+        camera = Picamera2CameraDetector(
+            capture_dir=config.capture_dir,
+            keep_last=config.capture_keep_last,
+            frame_buffer=frame_buffer,
+        )
+    elif cv2 is not None:
         camera = OpenCVCameraDetector(
             capture_dir=config.capture_dir,
             keep_last=config.capture_keep_last,
             frame_buffer=frame_buffer,
         )
+    else:
+        LOGGER.error("No compatible camera backend available, using MockCameraDetector")
+        camera = MockCameraDetector()
     return UltrasonicProximitySensor(), camera
 
 

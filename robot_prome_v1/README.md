@@ -94,7 +94,7 @@ flowchart TD
 |-----------------|-------------|
 | `main.py`       | Starts all threads and shuts down the system cleanly |
 | `settings.py`   | Shared module — settings, constants, prompts, models, states, safe JSON I/O |
-| `vision.py`     | Captures camera frame (OpenCV) and writes `state.json` |
+| `vision.py`     | Captures camera frame (Picamera2/OpenCV) and writes `state.json` |
 | `brain.py`      | Reads `state.json` and `memory.json`, makes decisions via LLM (Ollama), writes `command.json` |
 | `controller.py` | Executes commands from `command.json` on motors |
 | `memory.py`     | Stores last n commands for decision-making in `brain.py` |
@@ -114,6 +114,7 @@ Project requires Python 3.8 or higher.
 Install system packages on Raspberry Pi:
 
 - python3-opencv
+- python3-picamera2 (for Raspberry Pi Camera Module 3 via CSI)
 - python3-rpi-lgpio (Raspberry Pi 5 compatible GPIO backend)
 - sounddevice (installed via pip)
 - vosk (installed via pip)
@@ -141,7 +142,7 @@ ollama list
 On Raspberry Pi add GPIO and install dependencies:
 
 ```bash
-sudo apt install -y python3-rpi-lgpio
+sudo apt install -y python3-rpi-lgpio python3-picamera2
 ```
 
 ### 4. Voice recognition model (Vosk, Russian)
@@ -160,6 +161,19 @@ export VOSK_MODEL_PATH=/home/pi/vosk-model-small-ru-0.22
 
 ```bash
 cd robot_prome_v1
+python main.py
+```
+
+Raspberry Pi Camera Module 3 works by default (no extra env vars required):
+
+```bash
+python main.py
+```
+
+For USB camera, force OpenCV backend:
+
+```bash
+export CAMERA_BACKEND=opencv
 python main.py
 ```
 
@@ -194,6 +208,7 @@ cd ~/robot_prome_v1
 sudo apt update
 sudo apt install -y \
   python3-opencv \
+  python3-picamera2 \
   python3-rpi-lgpio \
   python3-pip \
   espeak-ng \
@@ -251,7 +266,7 @@ python microphone.py --device-index 2
 
 ## Camera video stream
 
-When running with a camera (OpenCV), an MJPEG server starts automatically. Open the URL printed at startup in your browser:
+When running with a camera (Picamera2/OpenCV), an MJPEG server starts automatically. Open the URL printed at startup in your browser:
 
 ```
   ========================================================
@@ -263,6 +278,7 @@ When running with a camera (OpenCV), an MJPEG server starts automatically. Open 
 
 - Default port: `8765`. Change with: `python main.py --stream-port 9000`
 - Stream uses frames from the main vision loop and does not affect robot operation
+- Backend selection: `CAMERA_BACKEND=picamera2` (default), `opencv`, or `auto`
 
 ## For contributors
 

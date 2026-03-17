@@ -14,7 +14,7 @@ A short checklist of what to buy to build the robot for this project.
 | **L298N motor driver** | Two PWM channels (IN1–IN4, ENA, ENB) — forward/back and turns |
 | **2 DC motors** | Wheels: forward/back steps, in-place turns |
 | **HC-SR04 ultrasonic sensor** | `obstacle_cm` — distance to obstacle ahead |
-| **Camera** | OpenCV, 640×480: frame for LLM and browser video stream |
+| **Camera** | Picamera2/OpenCV, 640×480: frame for LLM and browser video stream |
 | **RGB LED** | LIGHT_ON / LIGHT_OFF, status (optional — can be disabled in code) |
 | **Power** | 6–12 V for motors + 5 V for Pi (battery or PSU) |
 
@@ -62,7 +62,7 @@ Project pins (BCM): motors IN1=20, IN2=21, IN3=19, IN4=26, ENA=16, ENB=13; senso
 ### 3. Quick tips
 
 - Ready-made kit: ensure it has **L298N** and **HC-SR04** and is advertised for **Raspberry Pi** — less wiring hassle.
-- Camera: any USB camera supported on Linux or official Pi Camera; code uses device index 0 and 640×480.
+- Camera: any USB camera supported on Linux or official Pi Camera. Camera Module 3 is used by default when `python3-picamera2` is installed.
 - The robot’s brain is a cloud LLM via Ollama; a powerful Pi is not required for logic, but needed to run Python, camera, and GPIO.
 - All pins are configured in a single file, `settings.py` — adjust only there for your hardware.
 
