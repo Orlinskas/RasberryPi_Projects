@@ -89,6 +89,7 @@ CONTROLLER_IN1, CONTROLLER_IN2, CONTROLLER_IN3, CONTROLLER_IN4 = 20, 21, 19, 26
 CONTROLLER_ENA, CONTROLLER_ENB = 16, 13
 CONTROLLER_LED_R, CONTROLLER_LED_G, CONTROLLER_LED_B = 22, 27, 24
 CONTROLLER_SERVO_PIN = 11  # FrontServoPin = 23 | ServoUpDownPin = 9 | ServoLeftRightPin = 11
+FRONT_SERVO_PIN = 23
 
 # ---------------------------------------------------------------------------
 # Utility functions
@@ -425,8 +426,8 @@ MICROPHONE_RETRY_DELAY_S = 5.0
 MICROPHONE_TEST_AUDIO_PLAY_TIMEOUT_S = 10.0
 MICROPHONE_TEST_START_PROMPT = "Записываю"
 MICROPHONE_TEST_DONE_STT_PROMPT = "Запись завершена"
-MICROPHONE_TEST_DONE_AUDIO_PROMPT = "Запись завершена. Проигрываю"
-MICROPHONE_TRIGGER_ACK_PROMPT = "Слушаю и выполняю"
+MICROPHONE_TEST_DONE_AUDIO_PROMPT = "Проигрываю запись"
+MICROPHONE_TRIGGER_ACK_PROMPT = "Слушаю команду"
 
 
 @dataclass
