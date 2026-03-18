@@ -281,13 +281,26 @@ class UltrasonicProximitySensor:
                 left_deg = center_deg - PROXIMITY_SERVO_DEVIATION_DEG
                 right_deg = center_deg + PROXIMITY_SERVO_DEVIATION_DEG
                 readings: list[float] = []
-                for angle in (center_deg, left_deg, right_deg):
-                    self._set_servo_angle(angle)
-                    self._servo_off()
-                    try:
-                        readings.append(self._read_single_position_cm())
-                    except RuntimeError:
-                        pass
+                self._set_servo_angle(center_deg)
+                self._servo_off()
+                try:
+                    readings.append(self._read_single_position_cm())
+                except RuntimeError:
+                    pass
+                self._set_servo_angle(left_deg)
+                self._servo_off()
+                try:
+                    readings.append(self._read_single_position_cm())
+                except RuntimeError:
+                    pass
+                self._set_servo_angle(center_deg)
+                self._servo_off()
+                self._set_servo_angle(right_deg)
+                self._servo_off()
+                try:
+                    readings.append(self._read_single_position_cm())
+                except RuntimeError:
+                    pass
                 self._set_servo_angle(center_deg)
                 self._servo_off()
                 if readings:

@@ -325,8 +325,8 @@ class BrainConfig:
     ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
     ollama_model: str = os.getenv("OLLAMA_BRAIN_MODEL", "qwen3.5:397b-cloud")
     ollama_timeout_s: float = float(os.getenv("OLLAMA_TIMEOUT_S", "45"))
-    llm_temperature: float = 0.0
-    llm_num_predict: int = 128
+    llm_temperature: float = 0.1
+    llm_num_predict: int = 512
     llm_keep_alive: str = os.getenv("OLLAMA_KEEP_ALIVE", "60m")
     log_llm_verbose: bool = False
 
