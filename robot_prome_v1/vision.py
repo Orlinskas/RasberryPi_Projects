@@ -29,7 +29,11 @@ from settings import (
     CAMERA_WIDTH,
     CAPTURE_KEEP_LAST,
     ECHO_PIN,
+    FRONT_SERVO_PIN,
     GPIO_LOCK,
+    PROXIMITY_SERVO_CENTER_DEG,
+    PROXIMITY_SERVO_DEVIATION_DEG,
+    PROXIMITY_SERVO_SETTLE_S,
     STREAM_DEFAULT_PORT,
     STREAM_FPS,
     STREAM_JPEG_QUALITY,
@@ -169,9 +173,13 @@ class CameraDetector(Protocol):
         ...
 
 
+_SERVO_PWM_FREQ_HZ = 50
+
 class UltrasonicProximitySensor:
     def __init__(self) -> None:
         self._initialized = False
+        self._servo_initialized = False
+        self._servo_pwm: Optional[Any] = None
         self._history: Deque[float] = deque(maxlen=5)
         self._last_read_time: float = 0.0
 
@@ -188,6 +196,29 @@ class UltrasonicProximitySensor:
             GPIO.output(TRIG_PIN, GPIO.LOW)
         time.sleep(0.05)
         self._initialized = True
+
+    def _init_servo_once(self) -> None:
+        if self._servo_initialized or PROXIMITY_SERVO_DEVIATION_DEG <= 0 or GPIO is None:
+            return
+        self._init_gpio_once()
+        with GPIO_LOCK:
+            GPIO.setup(FRONT_SERVO_PIN, GPIO.OUT, initial=GPIO.LOW)
+            self._servo_pwm = GPIO.PWM(FRONT_SERVO_PIN, _SERVO_PWM_FREQ_HZ)
+            self._servo_pwm.start(0)
+        time.sleep(0.1)
+        self._servo_initialized = True
+
+    def _set_servo_angle(self, angle_deg: float) -> None:
+        if self._servo_pwm is None:
+            return
+        angle_clamped = max(0.0, min(180.0, angle_deg))
+        duty = 2.5 + 10 * angle_clamped / 180
+        self._servo_pwm.ChangeDutyCycle(duty)
+        time.sleep(PROXIMITY_SERVO_SETTLE_S)
+
+    def _servo_off(self) -> None:
+        if self._servo_pwm is not None:
+            self._servo_pwm.ChangeDutyCycle(0)
 
     def _read_once_cm(self) -> Optional[float]:
         deadline = time.monotonic() + ULTRASONIC_TIMEOUT_S
@@ -222,25 +253,51 @@ class UltrasonicProximitySensor:
         threshold = max(5.0, med * ULTRASONIC_OUTLIER_RATIO)
         return [s for s in samples if abs(s - med) <= threshold]
 
-    def read_distance_cm(self) -> float:
-        self._init_gpio_once()
-        now = time.monotonic()
-        elapsed = now - self._last_read_time
-        if elapsed < ULTRASONIC_INTER_MEASURE_DELAY_S and self._history:
-            return float(self._history[-1])
+    def _read_single_position_cm(self) -> float:
         samples: list[float] = []
         for _ in range(ULTRASONIC_SAMPLES_PER_READ):
             d = self._read_once_cm()
             if d is not None:
                 samples.append(d)
             time.sleep(ULTRASONIC_INTER_MEASURE_DELAY_S)
-        self._last_read_time = time.monotonic()
         valid = self._filter_outliers(samples)
         if not valid:
-            if not self._history:
-                raise RuntimeError("No valid ultrasonic echo")
-            return float(statistics.median(self._history))
-        result = statistics.median(valid)
+            if self._history:
+                return float(statistics.median(self._history))
+            raise RuntimeError("No valid ultrasonic echo")
+        return float(statistics.median(valid))
+
+    def read_distance_cm(self) -> float:
+        self._init_gpio_once()
+        now = time.monotonic()
+        elapsed = now - self._last_read_time
+        if elapsed < ULTRASONIC_INTER_MEASURE_DELAY_S and self._history:
+            return float(self._history[-1])
+
+        if PROXIMITY_SERVO_DEVIATION_DEG > 0:
+            self._init_servo_once()
+            if self._servo_pwm is not None:
+                center_deg = PROXIMITY_SERVO_CENTER_DEG
+                left_deg = center_deg - PROXIMITY_SERVO_DEVIATION_DEG
+                right_deg = center_deg + PROXIMITY_SERVO_DEVIATION_DEG
+                readings: list[float] = []
+                for angle in (center_deg, left_deg, right_deg):
+                    self._set_servo_angle(angle)
+                    self._servo_off()
+                    try:
+                        readings.append(self._read_single_position_cm())
+                    except RuntimeError:
+                        pass
+                self._set_servo_angle(center_deg)
+                self._servo_off()
+                if readings:
+                    result = min(readings)
+                    self._last_read_time = time.monotonic()
+                    self._history.append(result)
+                    return result
+
+        result = self._read_single_position_cm()
+        self._last_read_time = time.monotonic()
         self._history.append(result)
         return result
 

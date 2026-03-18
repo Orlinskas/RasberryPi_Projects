@@ -290,7 +290,7 @@ JSON example:
 
 Behavior rules:
 1) Safety first:
-- If obstacle_cm is not null and < 50: avoid collision (TURN_* or STEP_BACKWARD).
+- If obstacle_cm is not null and < 40: avoid collision (TURN_* or STEP_BACKWARD).
 - If obstacle appears in image, act cautiously even if the sensor is noisy.
 
 2) Command priority:
@@ -298,7 +298,7 @@ Behavior rules:
 - Interpret command intent and choose the closest allowed action.
 
 3) Target seeking:
-- If obstacle_cm >= 50 or obstacle_cm is null, seek {TARGET}.
+- If obstacle_cm >= 40 or obstacle_cm is null, seek {TARGET}.
 - Keep {TARGET} centered before moving forward.
 - If {TARGET} is left -> TURN_LEFT_15 or TURN_LEFT_45
 - If {TARGET} is right -> TURN_RIGHT_15 or TURN_RIGHT_45
@@ -324,9 +324,9 @@ class BrainConfig:
     memory_path: Path = MEMORY_PATH
     ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
     ollama_model: str = os.getenv("OLLAMA_BRAIN_MODEL", "qwen3.5:397b-cloud")
-    ollama_timeout_s: float = float(os.getenv("OLLAMA_TIMEOUT_S", "100"))
-    llm_temperature: float = 0.1
-    llm_num_predict: int = 512
+    ollama_timeout_s: float = float(os.getenv("OLLAMA_TIMEOUT_S", "45"))
+    llm_temperature: float = 0.0
+    llm_num_predict: int = 128
     llm_keep_alive: str = os.getenv("OLLAMA_KEEP_ALIVE", "60m")
     log_llm_verbose: bool = False
 
@@ -347,6 +347,11 @@ ULTRASONIC_MAX_CM = 500.0
 ULTRASONIC_INTER_MEASURE_DELAY_S = 0.06
 ULTRASONIC_SAMPLES_PER_READ = 5
 ULTRASONIC_OUTLIER_RATIO = 0.4
+
+# Front servo for proximity sensor sweep (FRONT_SERVO_PIN in controller section)
+PROXIMITY_SERVO_DEVIATION_DEG = 40  # angle left/right from center for extra measurements
+PROXIMITY_SERVO_CENTER_DEG = 78
+PROXIMITY_SERVO_SETTLE_S = 0.05  # time to wait after moving servo before measuring
 
 # Camera
 CAMERA_INDEX = 0
