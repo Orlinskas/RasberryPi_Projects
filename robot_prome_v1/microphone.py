@@ -283,6 +283,7 @@ class SpeechRecognizer:
                 return None
 
             _log_received_command("loop", command_text)
+            _speak_prompt("выполняю")
             _update_state_command(self.config.state_path, command_text)
             LOGGER.info("State updated with command")
             return command_text

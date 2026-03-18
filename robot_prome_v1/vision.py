@@ -220,6 +220,15 @@ class UltrasonicProximitySensor:
         if self._servo_pwm is not None:
             self._servo_pwm.ChangeDutyCycle(0)
 
+    def close(self) -> None:
+        if self._servo_pwm is not None:
+            try:
+                self._servo_pwm.stop()
+            except Exception:
+                pass
+            self._servo_pwm = None
+        self._servo_initialized = False
+
     def _read_once_cm(self) -> Optional[float]:
         deadline = time.monotonic() + ULTRASONIC_TIMEOUT_S
         with GPIO_LOCK:
@@ -966,6 +975,8 @@ def run_vision_loop(config: VisionConfig, stop_event: Optional[threading.Event] 
             atomic_write_json(config.state_path, state_payload)
             LOGGER.info("STATE written:\n%s", json.dumps(state_payload, ensure_ascii=False, indent=2, sort_keys=True))
     finally:
+        if hasattr(proximity, "close"):
+            proximity.close()
         camera.close()
         LOGGER.info("Vision stopped")
 
