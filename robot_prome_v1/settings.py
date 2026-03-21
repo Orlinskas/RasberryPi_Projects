@@ -348,11 +348,6 @@ ULTRASONIC_INTER_MEASURE_DELAY_S = 0.06
 ULTRASONIC_SAMPLES_PER_READ = 5
 ULTRASONIC_OUTLIER_RATIO = 0.4
 
-# Front servo for proximity sensor sweep (FRONT_SERVO_PIN in controller section)
-PROXIMITY_SERVO_DEVIATION_DEG = 40  # angle left/right from center for extra measurements
-PROXIMITY_SERVO_CENTER_DEG = 78
-PROXIMITY_SERVO_SETTLE_S = 0.05  # time to wait after moving servo before measuring
-
 # Camera
 CAMERA_INDEX = 0
 CAMERA_BACKEND = os.getenv("CAMERA_BACKEND", "picamera2").strip().lower()
